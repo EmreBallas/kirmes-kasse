@@ -27,11 +27,13 @@ interface Mass {
  */
 function useMass<T extends HTMLElement>(): [(el: T | null) => void, Mass | null] {
   const beobachter = useRef<ResizeObserver | null>(null)
+  const element = useRef<T | null>(null)
   const [mass, setMass] = useState<Mass | null>(null)
 
   const ref = useCallback((el: T | null): void => {
     beobachter.current?.disconnect()
     beobachter.current = null
+    element.current = el
     if (el === null || typeof ResizeObserver === 'undefined') return
     const melden = (breite: number, hoehe: number): void => {
       setMass((alt) =>
@@ -47,7 +49,24 @@ function useMass<T extends HTMLElement>(): [(el: T | null) => void, Mass | null]
     melden(Math.floor(el.clientWidth), Math.floor(el.clientHeight))
   }, [])
 
-  useEffect(() => () => beobachter.current?.disconnect(), [])
+  // Sicherheitsnetz: bei Fenstergroessen-Aenderung (Vollbild an/aus, Monitorwechsel) zusaetzlich
+  // direkt nachmessen, falls der ResizeObserver einmal spaet oder gar nicht meldet.
+  useEffect(() => {
+    const nachmessen = (): void => {
+      const el = element.current
+      if (el === null) return
+      const breite = Math.floor(el.clientWidth)
+      const hoehe = Math.floor(el.clientHeight)
+      setMass((alt) =>
+        alt !== null && alt.breite === breite && alt.hoehe === hoehe ? alt : { breite, hoehe }
+      )
+    }
+    window.addEventListener('resize', nachmessen)
+    return () => {
+      window.removeEventListener('resize', nachmessen)
+      beobachter.current?.disconnect()
+    }
+  }, [])
 
   return [ref, mass]
 }
