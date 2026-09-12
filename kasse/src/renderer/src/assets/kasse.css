@@ -1,0 +1,1081 @@
+/* Kasse WintiKirmes 2026 – eigenes CSS, touch-tauglich, hoher Kontrast, keine Animationen.
+   Layout fuer 1366x768. Rot = Fehler/Storno, Gruen = Rueckgeld/OK, coupon = warm, kasse = blau. */
+
+:root {
+  --bg: #f3f4f6;
+  --flaeche: #ffffff;
+  --text: #111827;
+  --text-schwach: #4b5563;
+  --rand: #9ca3af;
+  --rand-stark: #374151;
+  --primaer: #1d4ed8;
+  --primaer-text: #ffffff;
+  --gruen: #15803d;
+  --gruen-hell: #dcfce7;
+  --rot: #b91c1c;
+  --rot-hell: #fee2e2;
+  --gelb-hell: #fef3c7;
+  --gelb-rand: #b45309;
+  --coupon: #fde68a;
+  --coupon-rand: #b45309;
+  --coupon-dunkel: #92400e;
+  --kasse: #bfdbfe;
+  --kasse-rand: #1e40af;
+  --kasse-dunkel: #1e3a8a;
+  --neutral: #e5e7eb;
+  --neutral-hover: #d1d5db;
+  --schrift: 16px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', system-ui, -apple-system, Arial, sans-serif;
+  font-size: var(--schrift);
+  line-height: 1.3;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#root {
+  height: 100%;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0 0 8px 0;
+  line-height: 1.2;
+}
+h1 {
+  font-size: 26px;
+}
+h2 {
+  font-size: 20px;
+}
+h3 {
+  font-size: 17px;
+  margin-top: 12px;
+}
+p {
+  margin: 0 0 8px 0;
+}
+
+.zahl {
+  font-variant-numeric: tabular-nums;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+/* ---------------------------------------------------------------- Knoepfe */
+
+.knopf {
+  min-height: 48px;
+  min-width: 48px;
+  padding: 8px 16px;
+  border: 2px solid var(--rand-stark);
+  border-radius: 8px;
+  background: var(--neutral);
+  color: var(--text);
+  font-size: 17px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.knopf:active:not(:disabled) {
+  filter: brightness(0.9);
+}
+.knopf:focus-visible {
+  outline: 3px solid var(--primaer);
+  outline-offset: 2px;
+}
+.knopf:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.knopf-primaer {
+  background: var(--primaer);
+  border-color: var(--primaer);
+  color: var(--primaer-text);
+}
+.knopf-gefahr {
+  background: var(--rot);
+  border-color: var(--rot);
+  color: #ffffff;
+}
+.knopf-gross {
+  min-height: 56px;
+  font-size: 19px;
+  padding: 10px 22px;
+}
+.knopf-riesig {
+  min-height: 72px;
+  font-size: 24px;
+  padding: 12px 28px;
+  width: 100%;
+}
+.knopf-klein {
+  min-height: 48px;
+  padding: 6px 12px;
+  font-size: 16px;
+}
+.knopf-quadrat {
+  width: 48px;
+  padding: 0;
+  font-size: 24px;
+}
+.knopf-symbol .symbol {
+  flex: 0 0 auto;
+}
+.knopf-wahl {
+  background: var(--flaeche);
+}
+.knopf-wahl-aktiv.gruppe-wahl-coupon {
+  background: var(--coupon);
+  border-color: var(--coupon-rand);
+}
+.knopf-wahl-aktiv.gruppe-wahl-kasse {
+  background: var(--kasse);
+  border-color: var(--kasse-rand);
+}
+.knopfgruppe {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.knopfgruppe-senkrecht {
+  flex-direction: column;
+}
+.knopfgruppe-senkrecht .knopf {
+  width: 100%;
+}
+
+/* ---------------------------------------------------------------- Eingaben */
+
+.feld {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.feld > span:first-child {
+  font-weight: 600;
+  color: var(--text-schwach);
+}
+.feld-zeile {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+.feld-zeile input[type='checkbox'] {
+  width: 28px;
+  height: 28px;
+}
+.feld-hinweis {
+  color: var(--text-schwach);
+  font-size: 16px;
+}
+.feld-wert {
+  font-size: 17px;
+}
+.eingabe {
+  min-height: 48px;
+  padding: 8px 12px;
+  border: 2px solid var(--rand-stark);
+  border-radius: 8px;
+  background: var(--flaeche);
+  font-size: 20px;
+  width: 100%;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.eingabe:focus {
+  outline: 3px solid var(--primaer);
+  outline-offset: 1px;
+}
+.eingabe-fehler {
+  border-color: var(--rot);
+  background: var(--rot-hell);
+}
+.eingabe-gross {
+  font-size: 28px;
+  min-height: 60px;
+}
+textarea.eingabe {
+  resize: none;
+  font-size: 17px;
+}
+.zaehler {
+  font-weight: 400;
+  margin-left: 6px;
+}
+.zaehler-zuviel {
+  color: var(--rot);
+  font-weight: 700;
+}
+
+/* ---------------------------------------------------------------- Karten, Meldungen */
+
+.karte {
+  background: var(--flaeche);
+  border: 2px solid var(--rand);
+  border-radius: 12px;
+  padding: 16px 20px;
+}
+.karte-fehler {
+  border-color: var(--rot);
+  background: var(--rot-hell);
+}
+.karte-warnung {
+  border-color: var(--gelb-rand);
+  background: var(--gelb-hell);
+}
+.karte-ok {
+  border-color: var(--gruen);
+  background: var(--gruen-hell);
+}
+.karte-gefahr {
+  border-color: var(--rot);
+}
+.meldung-fehler {
+  color: var(--rot);
+  font-weight: 600;
+}
+.meldung-ok {
+  color: var(--gruen);
+  font-weight: 600;
+}
+.meldung-leiste {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px;
+  margin: 0 16px 8px 16px;
+  border-radius: 8px;
+  border: 2px solid currentColor;
+  background: var(--flaeche);
+}
+
+/* ---------------------------------------------------------------- Seiten */
+
+.seite {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.seite-kopf {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+  background: var(--flaeche);
+  border-bottom: 2px solid var(--rand);
+}
+.seite-kopf h1 {
+  flex: 1;
+  margin: 0;
+}
+.seite-liste .tabelle-rahmen {
+  flex: 1;
+  overflow: auto;
+  padding: 0 16px 16px 16px;
+}
+
+/* Kassenstart */
+.seite-start {
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 24px;
+  overflow: auto;
+}
+.start-uhr {
+  text-align: center;
+}
+.start-datum {
+  font-size: 32px;
+  font-weight: 600;
+}
+.start-zeit {
+  font-size: 72px;
+  font-weight: 700;
+  line-height: 1;
+}
+.start-formular {
+  width: 520px;
+  max-width: 100%;
+}
+.seite-start .karte-warnung,
+.seite-start .karte-fehler {
+  width: 520px;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ---------------------------------------------------------------- Kopfzeile */
+
+.kopfzeile {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 64px;
+  padding: 0 12px;
+  background: var(--flaeche);
+  border-bottom: 2px solid var(--rand);
+  flex: 0 0 auto;
+}
+.kopf-links,
+.kopf-rechts {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.kopf-datum {
+  font-size: 20px;
+  font-weight: 700;
+}
+.kopf-kassier {
+  font-size: 18px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--neutral);
+}
+.kopf-uhr {
+  font-size: 26px;
+  font-weight: 700;
+  margin-right: 8px;
+}
+.ampel {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 4px 14px;
+  border-radius: 20px;
+  font-weight: 700;
+  font-size: 17px;
+  color: #ffffff;
+}
+.ampel-gruen {
+  background: var(--gruen);
+}
+.ampel-rot {
+  background: var(--rot);
+}
+.ampel-zusatz {
+  font-weight: 400;
+  opacity: 0.9;
+  margin-left: 6px;
+}
+
+/* ---------------------------------------------------------------- Verkauf */
+
+.verkauf-inhalt {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+.verkauf-links {
+  flex: 1;
+  min-width: 0;
+  padding: 12px;
+  overflow: auto;
+}
+.produktraster {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+.produktraster-leer {
+  padding: 40px;
+  text-align: center;
+  color: var(--text-schwach);
+  font-size: 20px;
+}
+.kachel {
+  position: relative;
+  min-height: 96px;
+  border-radius: 10px;
+  border: 2px solid;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.kachel-coupon {
+  background: var(--coupon);
+  border-color: var(--coupon-rand);
+}
+.kachel-kasse {
+  background: var(--kasse);
+  border-color: var(--kasse-rand);
+}
+.kachel-flaeche {
+  flex: 1;
+  min-height: 72px;
+  border: 0;
+  background: transparent;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-start;
+  text-align: left;
+  cursor: pointer;
+}
+.kachel-flaeche:active:not(:disabled) {
+  filter: brightness(0.9);
+}
+.kachel-flaeche:focus-visible {
+  outline: 3px solid var(--primaer);
+  outline-offset: -3px;
+}
+.kachel-name {
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.15;
+  word-break: break-word;
+}
+.kachel-preis {
+  font-size: 19px;
+  font-weight: 600;
+  align-self: flex-end;
+}
+.kachel-coupon .kachel-preis {
+  color: var(--coupon-dunkel);
+}
+.kachel-kasse .kachel-preis {
+  color: var(--kasse-dunkel);
+}
+.kachel-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: 16px;
+  background: var(--primaer);
+  color: #ffffff;
+  font-size: 18px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.kachel-schalter {
+  min-height: 28px;
+  border: 0;
+  border-top: 1px solid rgba(0, 0, 0, 0.25);
+  background: rgba(255, 255, 255, 0.55);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-schwach);
+  cursor: pointer;
+  padding: 4px;
+}
+.kachel-schalter-an {
+  background: var(--rot);
+  color: #ffffff;
+}
+.kachel-ausverkauft {
+  background: #d1d5db;
+  border-color: #6b7280;
+}
+.kachel-ausverkauft .kachel-flaeche {
+  cursor: not-allowed;
+  color: #6b7280;
+}
+.kachel-ausverkauft .kachel-preis {
+  color: #6b7280;
+}
+.kachel-stempel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 38%;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--rot);
+  letter-spacing: 1px;
+}
+
+/* Warenkorb */
+.warenkorb {
+  width: 400px;
+  flex: 0 0 400px;
+  display: flex;
+  flex-direction: column;
+  background: var(--flaeche);
+  border-left: 2px solid var(--rand);
+  min-height: 0;
+}
+.warenkorb-kopf {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--rand);
+}
+.warenkorb-kopf h2 {
+  margin: 0;
+  flex: 1;
+}
+.warenkorb-anzahl {
+  color: var(--text-schwach);
+}
+.warenkorb-zeilen {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+  overflow: auto;
+}
+.warenkorb-zeile {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    'name betrag'
+    'menge menge';
+  gap: 4px 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--neutral);
+  border-left: 8px solid transparent;
+}
+.warenkorb-zeile.gruppe-coupon {
+  border-left-color: var(--coupon-rand);
+}
+.warenkorb-zeile.gruppe-kasse {
+  border-left-color: var(--kasse-rand);
+}
+.wz-name {
+  grid-area: name;
+  font-weight: 700;
+  font-size: 17px;
+}
+.wz-einzel {
+  display: none;
+}
+.wz-betrag {
+  grid-area: betrag;
+  font-size: 19px;
+  font-weight: 700;
+  text-align: right;
+}
+.wz-menge {
+  grid-area: menge;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.wz-anzahl {
+  min-width: 40px;
+  text-align: center;
+  font-size: 22px;
+  font-weight: 700;
+}
+.wz-menge .knopf-gefahr {
+  margin-left: auto;
+}
+.warenkorb-leer {
+  padding: 24px 12px;
+  color: var(--text-schwach);
+  text-align: center;
+}
+.warenkorb-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-top: 2px solid var(--rand-stark);
+  font-size: 20px;
+  font-weight: 700;
+}
+.total-betrag {
+  font-size: 40px;
+}
+.zahlarten {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 10px 12px 12px 12px;
+}
+.knopf-zahlart {
+  min-height: 64px;
+  font-size: 20px;
+}
+.zahlart-bar_chf,
+.zahlart-bar_eur {
+  background: var(--gruen);
+  border-color: var(--gruen);
+  color: #ffffff;
+}
+.zahlart-twint {
+  background: #000000;
+  border-color: #000000;
+  color: #ffffff;
+}
+.zahlart-helfer {
+  background: var(--neutral);
+}
+
+/* Banner nach dem Bezahlen */
+.banner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 8px 12px 0 12px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  background: var(--gruen-hell);
+  border: 3px solid var(--gruen);
+  flex: 0 0 auto;
+}
+.banner-druckproblem {
+  background: var(--rot-hell);
+  border-color: var(--rot);
+}
+.banner-beleg {
+  font-size: 18px;
+  font-weight: 600;
+}
+.banner-rueckgeld {
+  font-size: 36px;
+  font-weight: 800;
+  color: var(--gruen);
+  line-height: 1.1;
+}
+.banner-rueckgeld-klein {
+  font-size: 24px;
+}
+.banner-spende {
+  font-size: 22px;
+  color: var(--text);
+}
+.banner-sofort {
+  font-size: 22px;
+  font-weight: 700;
+  margin-top: 4px;
+}
+.banner-druck {
+  font-size: 18px;
+  color: var(--rot);
+  margin-top: 4px;
+}
+.banner-druck-laeuft {
+  color: var(--text);
+  font-weight: 600;
+}
+.banner-druck-ok {
+  color: var(--gruen);
+  font-size: 16px;
+}
+
+/* Kassenstart: Nachdruck des letzten Abschluss-Bons */
+.start-nachdruck {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.abschluss-fertig .abschluss-nachdruck {
+  margin-top: 8px;
+}
+
+/* ---------------------------------------------------------------- Overlays, Popups */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 24, 39, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+.overlay-popup {
+  z-index: 20;
+}
+.popup {
+  background: var(--flaeche);
+  border-radius: 14px;
+  border: 3px solid var(--rand-stark);
+  padding: 20px 24px;
+  width: 560px;
+  max-width: 95vw;
+  max-height: 95vh;
+  overflow: auto;
+}
+.popup-fehler {
+  border-color: var(--rot);
+}
+.popup-frage {
+  border-color: var(--gelb-rand);
+}
+.popup-titel {
+  font-size: 26px;
+}
+.popup-inhalt {
+  font-size: 20px;
+  margin: 8px 0 16px 0;
+}
+.popup-knoepfe {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 12px;
+}
+.popup-knoepfe .knopf {
+  min-width: 140px;
+}
+.popup-pin {
+  width: 420px;
+}
+.pin-anzeige {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  font-size: 40px;
+  margin: 8px 0 12px 0;
+}
+.pin-stelle-voll {
+  color: var(--primaer);
+}
+
+/* Ziffernblock */
+.ziffernblock {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.knopf-ziffer {
+  min-height: 60px;
+  font-size: 26px;
+  background: var(--flaeche);
+}
+.knopf-ziffer-funktion {
+  background: var(--neutral);
+}
+.ziffernblock-pin .ziffer-null-breit {
+  grid-column: 1 / span 1;
+}
+
+/* Bezahldialog */
+.overlay-bezahlen {
+  background: var(--bg);
+  align-items: stretch;
+}
+.bezahlen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 20px;
+  min-height: 0;
+}
+.bezahlen-kopf {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.bezahlen-kopf h2 {
+  font-size: 28px;
+  margin: 0;
+}
+.bezahlen-inhalt {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 460px;
+  gap: 24px;
+  min-height: 0;
+}
+.bezahlen-zeilen {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+}
+.bz-zeile {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 10px 20px;
+  background: var(--flaeche);
+  border: 2px solid var(--rand);
+  border-radius: 12px;
+}
+.bz-label {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text-schwach);
+}
+.bz-wert {
+  font-size: 40px;
+  font-weight: 700;
+}
+.bz-zeile-eur .bz-wert {
+  color: var(--kasse-dunkel);
+}
+.bz-zeile-klein .bz-label {
+  font-size: 18px;
+}
+.bz-zeile-klein .bz-wert {
+  font-size: 26px;
+}
+.bz-zeile-aktiv {
+  border-color: var(--primaer);
+  border-width: 3px;
+}
+.cursor {
+  color: var(--primaer);
+  font-weight: 400;
+  margin-left: 2px;
+}
+.bz-zeile-rueckgeld {
+  border-color: var(--gruen);
+  border-width: 3px;
+  background: var(--gruen-hell);
+}
+.bz-zeile-rueckgeld .bz-label {
+  color: var(--gruen);
+  font-size: 28px;
+}
+.bz-rueckgeld {
+  font-size: 72px;
+  color: var(--gruen);
+  line-height: 1;
+}
+.bz-nicht-gedeckt {
+  border-color: var(--rot);
+  background: var(--rot-hell);
+}
+.bz-nicht-gedeckt .bz-label,
+.bz-nicht-gedeckt .bz-rueckgeld {
+  color: var(--rot);
+}
+.bz-nicht-gedeckt .bz-rueckgeld {
+  font-size: 40px;
+}
+.bezahlen-eingabe {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+}
+.schnellwahl {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.knopf-schnell {
+  min-height: 56px;
+  font-size: 22px;
+}
+.twint-hinweis {
+  font-size: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.bezahlen-fuss {
+  display: flex;
+  gap: 16px;
+  margin-top: 12px;
+}
+.bezahlen-fuss .knopf-gross {
+  flex: 0 0 auto;
+  min-width: 260px;
+}
+.bezahlen-fuss .knopf-riesig {
+  flex: 1;
+}
+
+/* ---------------------------------------------------------------- Tabellen */
+
+.tabelle {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--flaeche);
+  font-size: 17px;
+}
+.tabelle th,
+.tabelle td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--rand);
+  text-align: left;
+  vertical-align: middle;
+}
+.tabelle th {
+  background: var(--neutral);
+  position: sticky;
+  top: 0;
+  font-weight: 700;
+}
+.tabelle .rechts {
+  text-align: right;
+}
+.tabelle .positionen {
+  max-width: 320px;
+  white-space: normal;
+  color: var(--text-schwach);
+  font-size: 16px;
+}
+.tabelle-leer {
+  text-align: center;
+  color: var(--text-schwach);
+  padding: 24px;
+}
+.tabelle-klein {
+  font-size: 16px;
+}
+.tabelle-klein th,
+.tabelle-klein td {
+  padding: 4px 8px;
+}
+.zeile-storniert td {
+  color: var(--text-schwach);
+  text-decoration: line-through;
+}
+.zeile-storniert td:last-child,
+.zeile-storniert td:nth-last-child(2),
+.zeile-storniert td:nth-last-child(3) {
+  text-decoration: none;
+}
+.zeile-inaktiv td {
+  color: var(--text-schwach);
+}
+.marke {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 15px;
+  font-weight: 700;
+}
+.marke-storno {
+  background: var(--rot);
+  color: #ffffff;
+}
+.marke-ok {
+  background: var(--gruen-hell);
+  color: var(--gruen);
+}
+.marke-coupon {
+  background: var(--coupon);
+  color: var(--coupon-dunkel);
+}
+.marke-kasse {
+  background: var(--kasse);
+  color: var(--kasse-dunkel);
+}
+
+/* ---------------------------------------------------------------- Abschluss */
+
+.abschluss-inhalt {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 440px;
+  gap: 16px;
+  padding: 12px 16px 16px 16px;
+  min-height: 0;
+}
+.abschluss-inhalt .karte {
+  overflow: auto;
+}
+.bericht-zeile {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  border-bottom: 1px dotted var(--rand);
+  font-size: 17px;
+}
+.bericht-zeile > span:last-child {
+  font-weight: 600;
+}
+.bericht-soll {
+  font-size: 20px;
+  font-weight: 700;
+  border-bottom: 2px solid var(--rand-stark);
+}
+.differenz {
+  font-size: 22px;
+  margin-bottom: 12px;
+}
+.differenz-null > span:last-child,
+.zahl.differenz-null {
+  color: var(--gruen);
+  font-weight: 800;
+}
+.differenz-abweichung > span:last-child,
+.zahl.differenz-abweichung {
+  color: var(--rot);
+  font-weight: 800;
+}
+.abschluss-fertig {
+  width: 560px;
+  max-width: 100%;
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.abschluss-fertig h1 {
+  color: var(--gruen);
+  font-size: 40px;
+}
+.abschluss-fertig .knopf {
+  margin-top: 16px;
+}
+
+/* ---------------------------------------------------------------- Verwaltung, Einstellungen */
+
+.verwaltung-inhalt {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 460px;
+  gap: 16px;
+  padding: 0 16px 16px 16px;
+  min-height: 0;
+}
+.verwaltung-inhalt .tabelle-rahmen {
+  overflow: auto;
+  padding: 0;
+}
+.verwaltung-inhalt .formular {
+  overflow: auto;
+}
+.einstellungen-inhalt {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+  padding: 0 16px 16px 16px;
+  min-height: 0;
+  overflow: auto;
+  align-items: start;
+}

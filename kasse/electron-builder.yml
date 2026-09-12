@@ -1,43 +1,34 @@
-appId: com.electron.app
-productName: kasse
+# Packaging der Kasse: Ordner-Deploy nach C:\Kasse (dist/win-unpacked) plus Zip, kein Installer, kein Signing.
+appId: ch.kibw.kasse
+productName: Kasse
+copyright: KIBW Winterthur
 directories:
   buildResources: build
+  output: dist
+asar: true
 files:
   - '!**/.vscode/*'
   - '!src/*'
+  - '!{data,data-e2e,dist,docs,tools,resources,build}/**'
+  - '!seed.local.json'
   - '!electron.vite.config.{js,ts,mjs,cjs}'
-  - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
+  - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md,KONTRAKT.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
-  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
-asarUnpack:
-  - resources/**
+  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json,vitest.config.ts}'
+# Migrationen, PowerShell-Skripte und Seeds liegen ausserhalb des asar unter <App>/resources/...
+extraResources:
+  - from: src/server/migrations
+    to: migrations
+  - from: tools
+    to: tools
+  - from: resources
+    to: resources
 win:
-  executableName: kasse
-nsis:
-  artifactName: ${name}-${version}-setup.${ext}
-  shortcutName: ${productName}
-  uninstallDisplayName: ${productName}
-  createDesktopShortcut: always
-mac:
-  entitlementsInherit: build/entitlements.mac.plist
-  extendInfo:
-    - NSCameraUsageDescription: Application requests access to the device's camera.
-    - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
-    - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
-    - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
-  notarize: false
-dmg:
-  artifactName: ${name}-${version}.${ext}
-linux:
   target:
-    - AppImage
-    - snap
-    - deb
-  maintainer: electronjs.org
-  category: Utility
-appImage:
-  artifactName: ${name}-${version}.${ext}
+    - dir
+    - zip
+  executableName: Kasse
+  icon: build/icon.ico
+  artifactName: ${productName}-${version}-win.${ext}
+forceCodeSigning: false
 npmRebuild: false
-publish:
-  provider: generic
-  url: https://example.com/auto-updates

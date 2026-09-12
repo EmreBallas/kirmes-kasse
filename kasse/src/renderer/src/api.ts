@@ -1,0 +1,280 @@
+/**
+ * HTTP-Client des Renderers. Spricht ausschliesslich JSON gegen den lokalen Hono-Server.
+ * Fehlerantworten des Servers (FehlerAntwort) werden als ApiFehler geworfen,
+ * Verbindungsprobleme und Zeitueberschreitungen als NetzFehler (fuer "Nochmals senden" mit derselben
+ * Verkaufs-UUID, Fachregel 17). Keine Anfrage bleibt unbegrenzt offen: jeder Aufruf hat ein Zeitlimit,
+ * damit der Bezahldialog und die Status-Ampel nie einfrieren.
+ */
+import type {
+  AbschlussBericht,
+  Druckauftrag,
+  Einstellungen,
+  FehlerAntwort,
+  Kassentag,
+  KassentagAbschlussAnfrage,
+  KassentagStartAnfrage,
+  NachdruckAnfrage,
+  Position,
+  Produkt,
+  StatusAntwort,
+  Storno,
+  StornoAnfrage,
+  StornoGrund,
+  Verkauf,
+  VerkaufAnfrage,
+  VerkaufAntwort,
+  Warenkorb,
+  Zahlung
+} from '@core/types'
+
+/** Port des Vite-Dev-Servers (npm run dev); nur dort liegt der Kassen-Server auf einer anderen Adresse. */
+export const VITE_DEV_PORT = '5173'
+/** Standardadresse des Kassen-Servers, wenn der Renderer nicht von ihm ausgeliefert wird. */
+export const STANDARD_SERVER = 'http://127.0.0.1:47100'
+
+/**
+ * Basis der API. Im Kiosk und im Plan B (Browser) wird der Renderer vom Kassen-Server selbst
+ * ausgeliefert, auf dem Port aus den Einstellungen bzw. KASSE_PORT. Dann werden die Aufrufe relativ
+ * gestellt und folgen automatisch dem ausliefernden Port. Nur im Vite-Dev-Server (Port 5173) oder
+ * ohne http-Adresse wird der Standard-Server absolut angesprochen.
+ */
+export function bestimmeApiBase(ort: { protocol: string; port: string } | undefined): string {
+  if (ort === undefined) return STANDARD_SERVER
+  if (!ort.protocol.startsWith('http')) return STANDARD_SERVER
+  return ort.port === VITE_DEV_PORT ? STANDARD_SERVER : ''
+}
+
+export const API_BASE: string = bestimmeApiBase(typeof location === 'undefined' ? undefined : location)
+
+export const PIN_HEADER = 'X-Pin'
+
+/** Zeitlimits je Aufrufart in Millisekunden. */
+export interface Zeitlimits {
+  /** Verkauf, Storno, Nachdruck, Listen, Einstellungen */
+  standard: number
+  /** Status-Polling (alle 2 s) */
+  status: number
+  /** Abschluss (PDF + Backup) und Testdaten loeschen (Backup) */
+  lang: number
+}
+
+export const ZEITLIMITS: Zeitlimits = { standard: 10_000, status: 4_000, lang: 60_000 }
+
+/** Fehlerantwort des Servers (HTTP-Status ausserhalb 2xx). */
+export class ApiFehler extends Error {
+  readonly status: number
+  readonly fehler: string
+  readonly meldung: string
+
+  constructor(status: number, fehler: string, meldung: string) {
+    super(meldung)
+    this.name = 'ApiFehler'
+    this.status = status
+    this.fehler = fehler
+    this.meldung = meldung
+  }
+}
+
+/** Keine Antwort vom Server (Netz, Server nicht gestartet, Zeitueberschreitung). */
+export class NetzFehler extends Error {
+  /** true, wenn das Zeitlimit die Anfrage abgebrochen hat */
+  readonly zeitueberschreitung: boolean
+
+  constructor(meldung = 'Keine Verbindung zum Kassen-Server', zeitueberschreitung = false) {
+    super(meldung)
+    this.name = 'NetzFehler'
+    this.zeitueberschreitung = zeitueberschreitung
+  }
+}
+
+/** Liefert eine deutsche Meldung fuer beliebige Fehlerobjekte (fuer den Bildschirm). */
+export function fehlerMeldung(e: unknown): string {
+  if (e instanceof ApiFehler) return e.meldung
+  if (e instanceof NetzFehler) return e.message
+  if (e instanceof Error) return e.message
+  return 'Unbekannter Fehler'
+}
+
+export type Methode = 'GET' | 'POST' | 'PUT'
+
+export interface KassentagAktuellAntwort {
+  kassentag: Kassentag | null
+  vortagOffen: Kassentag | null
+  vorschlagStartgeldChfRappen: number
+  /** zuletzt abgeschlossener Kassentag (Nachdruck des Abschluss-Bons); fehlt bei alten Servern */
+  letzterAbgeschlossener?: Kassentag | null
+}
+
+export interface LetzterVerkauf {
+  verkauf: Verkauf
+  zahlung: Zahlung
+  positionen: Position[]
+  storno: Storno | null
+}
+
+export interface EinstellungenAenderung extends Partial<Einstellungen> {
+  neuePin?: string
+}
+
+export type FetchFunktion = (eingabe: string, init: RequestInit) => Promise<Response>
+
+function istFehlerAntwort(daten: unknown): daten is FehlerAntwort {
+  return (
+    typeof daten === 'object' &&
+    daten !== null &&
+    typeof (daten as { fehler?: unknown }).fehler === 'string' &&
+    typeof (daten as { meldung?: unknown }).meldung === 'string'
+  )
+}
+
+/**
+ * Baut den API-Client. `fetchFn`, `base` und `zeitlimits` sind nur fuer Tests austauschbar.
+ */
+export function erstelleApi(
+  fetchFn: FetchFunktion,
+  base: string = API_BASE,
+  zeitlimits: Zeitlimits = ZEITLIMITS
+): KasseApi {
+  async function anfrage<T>(
+    methode: Methode,
+    pfad: string,
+    body?: unknown,
+    pin?: string,
+    zeitlimitMs: number = zeitlimits.standard
+  ): Promise<T> {
+    const headers: Record<string, string> = { Accept: 'application/json' }
+    if (body !== undefined) headers['Content-Type'] = 'application/json'
+    if (pin !== undefined) headers[PIN_HEADER] = pin
+
+    // Zeitlimit: blockiert der Main-Prozess (USB-Backup, PDF) oder haengt der Server, wird die Anfrage
+    // abgebrochen und als NetzFehler gemeldet. "Nochmals senden" ist dank Verkaufs-UUID gefahrlos.
+    const abbruch = new AbortController()
+    const timer = setTimeout(() => abbruch.abort(), zeitlimitMs)
+    let antwort: Response
+    let text: string
+    try {
+      antwort = await fetchFn(base + pfad, {
+        method: methode,
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+        signal: abbruch.signal
+      })
+      text = await antwort.text()
+    } catch {
+      if (abbruch.signal.aborted) {
+        throw new NetzFehler(
+          `Der Kassen-Server hat innert ${String(Math.round(zeitlimitMs / 1000))} s nicht geantwortet`,
+          true
+        )
+      }
+      throw new NetzFehler()
+    } finally {
+      clearTimeout(timer)
+    }
+
+    let daten: unknown = null
+    if (text !== '') {
+      try {
+        daten = JSON.parse(text)
+      } catch {
+        daten = null
+      }
+    }
+
+    if (!antwort.ok) {
+      if (istFehlerAntwort(daten)) {
+        throw new ApiFehler(antwort.status, daten.fehler, daten.meldung)
+      }
+      throw new ApiFehler(antwort.status, `http_${String(antwort.status)}`, `Server-Fehler ${String(antwort.status)}`)
+    }
+    return daten as T
+  }
+
+  return {
+    status: () => anfrage<StatusAntwort>('GET', '/api/status', undefined, undefined, zeitlimits.status),
+
+    produkte: (alle = false) => anfrage<Produkt[]>('GET', alle ? '/api/produkte?alle=1' : '/api/produkte'),
+    produktAnlegen: (daten, pin) => anfrage<Produkt>('POST', '/api/produkte', daten, pin),
+    produktAendern: (id, daten, pin) =>
+      anfrage<Produkt>('PUT', `/api/produkte/${encodeURIComponent(id)}`, daten, pin),
+    ausverkauftSetzen: (id, ausverkauft) =>
+      anfrage<Produkt>('POST', `/api/produkte/${encodeURIComponent(id)}/ausverkauft`, { ausverkauft }),
+
+    kassentagAktuell: () => anfrage<KassentagAktuellAntwort>('GET', '/api/kassentag/aktuell'),
+    kassentagStart: (daten) => anfrage<Kassentag>('POST', '/api/kassentag/start', daten),
+    bericht: () => anfrage<AbschlussBericht>('GET', '/api/kassentag/aktuell/bericht'),
+    abschluss: (kassentagId, daten) =>
+      anfrage<AbschlussBericht>(
+        'POST',
+        `/api/kassentag/${encodeURIComponent(kassentagId)}/abschluss`,
+        daten,
+        undefined,
+        zeitlimits.lang
+      ),
+    abschlussNachdruck: (kassentagId) =>
+      anfrage<{ druckauftragId: string }>(
+        'POST',
+        `/api/kassentag/${encodeURIComponent(kassentagId)}/abschluss/nachdruck`,
+        {}
+      ),
+
+    verkauf: (daten) => anfrage<VerkaufAntwort>('POST', '/api/verkauf', daten),
+    letzteVerkaeufe: (limit = 20) =>
+      anfrage<LetzterVerkauf[]>('GET', `/api/verkauf/letzte?limit=${String(limit)}`),
+    storno: (verkaufId, grund, pin) => {
+      const body: StornoAnfrage = { grund }
+      return anfrage<Storno>('POST', `/api/verkauf/${encodeURIComponent(verkaufId)}/storno`, body, pin)
+    },
+    nachdruck: (verkaufId, was) => {
+      const body: NachdruckAnfrage = { was }
+      return anfrage<{ druckauftragId: string }>(
+        'POST',
+        `/api/verkauf/${encodeURIComponent(verkaufId)}/nachdruck`,
+        body
+      )
+    },
+
+    druckauftrag: (id) =>
+      anfrage<Druckauftrag>('GET', `/api/druck/${encodeURIComponent(id)}`, undefined, undefined, zeitlimits.status),
+    testdruck: () => anfrage<{ druckauftragId: string }>('POST', '/api/druck/test', {}),
+
+    einstellungen: () => anfrage<Einstellungen>('GET', '/api/einstellungen'),
+    einstellungenSpeichern: (daten, pin) => anfrage<Einstellungen>('PUT', '/api/einstellungen', daten, pin),
+    pinPruefen: (pin) => anfrage<{ ok: boolean }>('POST', '/api/pin/pruefen', { pin }),
+    testdatenLoeschen: (pin) =>
+      anfrage<{ ok: boolean; backupPfad: string }>('POST', '/api/testdaten-loeschen', {}, pin, zeitlimits.lang),
+
+    warenkorbEntwurf: () => anfrage<Warenkorb>('GET', '/api/warenkorb-entwurf'),
+    warenkorbEntwurfSpeichern: (w) => anfrage<Warenkorb>('PUT', '/api/warenkorb-entwurf', w)
+  }
+}
+
+export interface KasseApi {
+  status(): Promise<StatusAntwort>
+  produkte(alle?: boolean): Promise<Produkt[]>
+  produktAnlegen(daten: Partial<Produkt>, pin: string): Promise<Produkt>
+  produktAendern(id: string, daten: Partial<Produkt>, pin: string): Promise<Produkt>
+  ausverkauftSetzen(id: string, ausverkauft: boolean): Promise<Produkt>
+  kassentagAktuell(): Promise<KassentagAktuellAntwort>
+  kassentagStart(daten: KassentagStartAnfrage): Promise<Kassentag>
+  bericht(): Promise<AbschlussBericht>
+  abschluss(kassentagId: string, daten: KassentagAbschlussAnfrage): Promise<AbschlussBericht>
+  /** Nachdruck des Abschluss-Bons eines abgeschlossenen Kassentags (Testfall 32) */
+  abschlussNachdruck(kassentagId: string): Promise<{ druckauftragId: string }>
+  verkauf(daten: VerkaufAnfrage): Promise<VerkaufAntwort>
+  letzteVerkaeufe(limit?: number): Promise<LetzterVerkauf[]>
+  storno(verkaufId: string, grund: StornoGrund, pin?: string): Promise<Storno>
+  nachdruck(verkaufId: string, was: NachdruckAnfrage['was']): Promise<{ druckauftragId: string }>
+  /** Zustand eines Druckauftrags (Banner verfolgt den eigenen Beleg) */
+  druckauftrag(id: string): Promise<Druckauftrag>
+  testdruck(): Promise<{ druckauftragId: string }>
+  einstellungen(): Promise<Einstellungen>
+  einstellungenSpeichern(daten: EinstellungenAenderung, pin: string): Promise<Einstellungen>
+  pinPruefen(pin: string): Promise<{ ok: boolean }>
+  testdatenLoeschen(pin: string): Promise<{ ok: boolean; backupPfad: string }>
+  warenkorbEntwurf(): Promise<Warenkorb>
+  warenkorbEntwurfSpeichern(w: Warenkorb): Promise<Warenkorb>
+}
+
+/** Standard-Client der App (globales fetch, API_BASE, Standard-Zeitlimits). */
+export const api: KasseApi = erstelleApi((eingabe, init) => fetch(eingabe, init))
