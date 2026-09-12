@@ -48,7 +48,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\print-raw.ps1 -Printer
 ```
 
 Erwartete Ausgabe im Terminal: `Gesendet: 220 Bytes an 'TM-T20II'`. Erwartetes Ergebnis auf Papier:
-- "WintiKirmes" doppelt gross und zentriert, darunter "TESTDRUCK TM-T20II".
+- "KASSE" doppelt gross und zentriert, darunter "TESTDRUCK TM-T20II".
 - Zeile "Umlaute: ä ö ü Ä Ö Ü ß" und "Türkçe: ş ğ ı ç İ Ş Ğ Ç" korrekt (Codepage PC857 via ESC t 13). Sind hier Fantasiezeichen zu sehen, ist ESC t 13 nicht angekommen oder die Bytes wurden nicht als PC857 kodiert.
 - "Gözleme  Dürüm  Lahmacun", Total/Gegeben/Rueckgeld (Rueckgeld doppelt gross), Datum/Uhrzeit.
 - Drei Leerzeilen, dann **Teilschnitt** (GS V 66 0: Vorschub bis zur Schneideposition und Schnitt mit einem Haltepunkt am linken Rand). Der Bon laesst sich abreissen, haengt aber links noch an einem Punkt. Das ist bei diesem Modell die einzige Schnittart (kein Vollschnitt).

@@ -29,7 +29,7 @@ Get-Printer -Name "TM-T20II" | Format-List Name, DriverName, PortName, PrinterSt
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\print-raw.ps1 -Printer "TM-T20II" -File tools\testdruck.bin
 ```
 
-Erwartet: Terminal `Gesendet: 220 Bytes an 'TM-T20II'` (Fassung 1 des Skripts) bzw. JSON `{jobId, bytes, status}` (Fassung 2, Abschnitt 7). Auf Papier: «WintiKirmes» doppelt gross zentriert, «TESTDRUCK TM-T20II», Zeilen «Umlaute: ä ö ü Ä Ö Ü ß» und «Türkçe: ş ğ ı ç İ Ş Ğ Ç» korrekt (PC857 via ESC t 13), «Gözleme Dürüm Lahmacun», Total/Gegeben/Rückgeld (Rückgeld doppelt gross), Datum/Uhrzeit, drei Leerzeilen, Teilschnitt (GS V 66 0, ein Haltepunkt links; Vollschnitt gibt es bei diesem Modell nicht), zum Schluss ein Klick am DK-Port (ESC p 0 25 250; ohne Schublade evtl. unhörbar).
+Erwartet: Terminal `Gesendet: 220 Bytes an 'TM-T20II'` (Fassung 1 des Skripts) bzw. JSON `{jobId, bytes, status}` (Fassung 2, Abschnitt 7). Auf Papier: «KASSE» doppelt gross zentriert, «TESTDRUCK TM-T20II», Zeilen «Umlaute: ä ö ü Ä Ö Ü ß» und «Türkçe: ş ğ ı ç İ Ş Ğ Ç» korrekt (PC857 via ESC t 13), «Gözleme Dürüm Lahmacun», Total/Gegeben/Rückgeld (Rückgeld doppelt gross), Datum/Uhrzeit, drei Leerzeilen, Teilschnitt (GS V 66 0, ein Haltepunkt links; Vollschnitt gibt es bei diesem Modell nicht), zum Schluss ein Klick am DK-Port (ESC p 0 25 250; ohne Schublade evtl. unhörbar).
 
 Fantasiezeichen statt Umlaute → ESC t 13 fehlt oder Text wurde nicht als cp857 kodiert. Die Bytes in `testdruck.bin` (0x84 ä, 0x94 ö, 0x81 ü, 0x8E Ä, 0x99 Ö, 0x9A Ü, 0xE1 ß, 0x9F ş, 0xA7 ğ, 0x8D ı, 0x87 ç, 0x98 İ, 0x9E Ş, 0xA6 Ğ, 0x80 Ç) sind die Referenz für den iconv-lite-Test am Sonntag.
 

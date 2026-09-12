@@ -1,7 +1,7 @@
 # Projektdokumente
 
-Die Dateien in diesem Ordner sind die Arbeitsdokumente der WintiKirmes 2026 des Vereins KIBW
-Winterthur: Roadmap, Entscheide und Recherchen aus der Entwicklung der Kasse. Sie
+Die Dateien in diesem Ordner sind die Arbeitsdokumente aus der Entwicklung dieser Kasse für ein
+zweitägiges Vereinsfest: Roadmap, Entscheide und Recherchen. Sie
 beschreiben, wie dieser eine Anlass gerechnet, eingerichtet und betrieben wurde. Sie sind
 Beispiele und Begründungen, keine Vorschriften: Preise, Termine, Hardware, Händler und
 Produktnamen sind auf diesen Verein zugeschnitten. Verbindlich für den Code ist allein

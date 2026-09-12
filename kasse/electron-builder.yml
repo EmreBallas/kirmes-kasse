@@ -1,7 +1,7 @@
 # Packaging der Kasse: Ordner-Deploy nach C:\Kasse (dist/win-unpacked) plus Zip, kein Installer, kein Signing.
-appId: ch.kibw.kasse
+appId: ch.kirmeskasse.app
 productName: Kasse
-copyright: KIBW Winterthur
+copyright: kirmes-kasse
 directories:
   buildResources: build
   output: dist

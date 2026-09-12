@@ -1,4 +1,4 @@
-# Roadmap Etappe 1 – Kasse WintiKirmes 2026 (Fassung 2)
+# Roadmap Etappe 1 – Kasse Kirmes 2026 (Fassung 2)
 
 Stand: Samstag, 12. September 2026, nach Kritik. Verbindliche Grundlage: `docs/entscheidungen.md`. Druckeranleitung: `docs/drucker-setup.md`. Produkt-Seed: `docs/produkte-seed.json`.
 
@@ -6,7 +6,7 @@ Stand: Samstag, 12. September 2026, nach Kritik. Verbindliche Grundlage: `docs/e
 
 ## 1. Ziel und Rahmen
 
-Am Sa 19. und So 20. September 2026 (12–19 Uhr, Sennhof, Verein KIBW) läuft eine lokale Kassensoftware auf einem Windows-Laptop mit Maus und Tastatur, Epson TM-T20II (USB, RAW ESC/POS) und 24-V-Kassenschublade. Genau eine Kasse, ein Kassier, ca. 20 Kunden pro Stunde. Zahlarten Bar-CHF, Bar-EUR (Rückgeld in CHF), Twint (statischer QR) und Helfer/Gratis. Pro Verkauf: Speichern vor Druck, Schubladenimpuls (nur Bar), ein Abholcoupon pro Produktzeile, minimaler Bon 1. Kassentag mit Startgeld, Abschluss mit Ist-Zählung als Bon und PDF. Entwicklung So 13.9. bis Mi 16.9. (Feature-Freeze Mittwochabend), Do Trockenlauf mit Kurz-Regression, Fr Aufbau, kein Code ab Freitag. Nach der Kirmes folgt Etappe 2 (Surface/Touch, mehrere Kassierer, Browser-Zweitkasse).
+Am Sa 19. und So 20. September 2026 (12–19 Uhr) läuft eine lokale Kassensoftware auf einem Windows-Laptop mit Maus und Tastatur, Epson TM-T20II (USB, RAW ESC/POS) und 24-V-Kassenschublade. Genau eine Kasse, ein Kassier, ca. 20 Kunden pro Stunde. Zahlarten Bar-CHF, Bar-EUR (Rückgeld in CHF), Twint (statischer QR) und Helfer/Gratis. Pro Verkauf: Speichern vor Druck, Schubladenimpuls (nur Bar), ein Abholcoupon pro Produktzeile, minimaler Bon 1. Kassentag mit Startgeld, Abschluss mit Ist-Zählung als Bon und PDF. Entwicklung So 13.9. bis Mi 16.9. (Feature-Freeze Mittwochabend), Do Trockenlauf mit Kurz-Regression, Fr Aufbau, kein Code ab Freitag. Nach der Kirmes folgt Etappe 2 (Surface/Touch, mehrere Kassierer, Browser-Zweitkasse).
 
 ## 2. Umfang Etappe 1
 

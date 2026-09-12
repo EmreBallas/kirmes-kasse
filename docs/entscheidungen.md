@@ -1,10 +1,10 @@
-# Entscheidungsprotokoll Kasse WintiKirmes 2026 (Fassung 2)
+# Entscheidungsprotokoll Kasse Kirmes 2026 (Fassung 2)
 
 Alle Einträge vom 12.9.2026. Quelle «Auftraggeber» = heute verbindlich entschieden; «Analyse» = aus `docs/analyse-2026-09-12.md` und den Recherchen (Drucker, Beschaffung, Technik) abgeleitet; «Kritik» = nach der Kritikrunde vom 12.9. ergänzt oder korrigiert. Einträge mit «Annahme» sind vom Auftraggeber noch zu bestätigen (siehe Roadmap Abschnitt 11).
 
 | Nr | Thema | Entscheidung | Datum | Quelle |
 |---|---|---|---|---|
-| 1 | Go-live | Produktivbetrieb Sa 19. und So 20.9.2026, zwei Kassentage, Sennhof/Winterthur. | 12.9.2026 | Auftraggeber |
+| 1 | Go-live | Produktivbetrieb Sa 19. und So 20.9.2026, zwei Kassentage, vor Ort. | 12.9.2026 | Auftraggeber |
 | 2 | Zahlarten | Bar-CHF, Bar-EUR, Twint (statischer QR), Helfer/Gratis. Keine Karte, keine Mischzahlung, keine Rabatte. | 12.9.2026 | Auftraggeber |
 | 3 | Bar-EUR | Rückgeld immer in CHF; Kurs als Einstellung zugunsten des Vereins, pro Beleg gespeichert (`kurs_x10000`); Gegenwert auf 5 Rappen abgerundet; Bildschirm zeigt «Total in EUR» (aufgerundet auf 0.10 EUR). | 12.9.2026 | Auftraggeber / Kritik |
 | 4 | Twint | Kunde tippt Betrag selbst, Kassier prüft Bestätigung auf dem Kundenhandy; Betragsfeld mit Total vorbelegt, ein Tipp «Bezahlt, geprüft»; Überzahlung = Twint-Spende; 200er-Schutz und «nicht gedeckt» gelten auch bei Twint. | 12.9.2026 | Auftraggeber / Kritik |

@@ -1,6 +1,6 @@
 # Kasse für Vereinsfeste
 
-Eine lokale Kassensoftware für Verpflegungsstände an Vereinsfesten: ein Kassierpunkt, Produktkacheln auf dem Bildschirm, Bar- und Twint-Zahlung, Abholcoupons und Bon vom Bondrucker, Kassentag mit Startgeld und Abschluss mit Ist-Zählung. Sie läuft vollständig offline auf einem Windows-Rechner; alle Daten liegen in einer SQLite-Datei auf demselben Gerät. Entstanden ist sie für die WintiKirmes 2026 des Vereins KIBW Winterthur und ist deshalb auf Schweizer Verhältnisse zugeschnitten. Der Code steht unter der MIT-Lizenz; andere Vereine können die Kasse installieren, ihre eigenen Produkte einpflegen und den Code anpassen.
+Eine lokale Kassensoftware für Verpflegungsstände an Vereinsfesten: ein Kassierpunkt, Produktkacheln auf dem Bildschirm, Bar- und Twint-Zahlung, Abholcoupons und Bon vom Bondrucker, Kassentag mit Startgeld und Abschluss mit Ist-Zählung. Sie läuft vollständig offline auf einem Windows-Rechner; alle Daten liegen in einer SQLite-Datei auf demselben Gerät. Entstanden ist sie für ein zweitägiges Vereinsfest in der Schweiz und ist deshalb auf Schweizer Verhältnisse zugeschnitten. Der Code steht unter der MIT-Lizenz; andere Vereine können die Kasse installieren, ihre eigenen Produkte einpflegen und den Code anpassen.
 
 ## Was sie kann
 

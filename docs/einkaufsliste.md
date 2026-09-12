@@ -1,4 +1,4 @@
-# Einkaufsliste Beschaffung WintiKirmes 2026 (Stand Sa 12.9.2026)
+# Einkaufsliste Beschaffung Kirmes 2026 (Stand Sa 12.9.2026)
 
 Rahmen: Der Epson TM-T20II ist vorhanden und laeuft auf 24 V (Handbuch S. 20). Der Schubladenanschluss der Epson-TM-Reihe ist 24 V, RJ12; Epsons eigene Schublade PCK-41 II ist explizit "RJ12, 24 VDC" und "passend zu TM-T88 und TM-T20". Papier laut Handbuch: Breite 79.5 mm ± 0.5, max. Aussendurchmesser 83 mm, Kern innen 12 mm.
 

@@ -1,9 +1,9 @@
 {
   "name": "kasse",
   "version": "0.1.0",
-  "description": "Kassensoftware WintiKirmes 2026 (KIBW Winterthur)",
+  "description": "Lokale Kassensoftware fuer Vereinsfeste: Bar, Twint, Abholcoupons, Bondrucker",
   "main": "./out/main/index.js",
-  "author": "KIBW Winterthur",
+  "author": "kirmes-kasse",
   "private": true,
   "scripts": {
     "format": "prettier --write .",
