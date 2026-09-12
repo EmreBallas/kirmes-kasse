@@ -150,7 +150,7 @@ describe('POST /api/verkauf', () => {
     expect(u.druckAnstoesse).toBe(1)
 
     const entwurf = await u.anfrage('GET', '/api/warenkorb-entwurf')
-    expect(entwurf.json).toEqual({ zeilen: [] })
+    expect(entwurf.json).toEqual({ zeilen: [], rabattAktiv: false })
 
     const b = await u.verkauf('v2', [{ name: 'Kaffee', anzahl: 1 }])
     expect(verkaufVon(b)['belegnr']).toBe('K1-0002')
@@ -928,7 +928,9 @@ describe('PIN, Produkte, Einstellungen', () => {
       kassenPraefix: 'K1',
       belegzaehler: 0,
       backupPfadUsb: null,
-      port: 47100
+      port: 47100,
+      rabattProzent: 50,
+      veranstaltung: ''
     })
     expect(Object.keys(g.json).some((k) => k.toLowerCase().includes('pin'))).toBe(false)
 
@@ -1010,9 +1012,38 @@ describe('PIN, Produkte, Einstellungen', () => {
     const w = {
       zeilen: [{ produktId: 'p', name: 'Kaffee', preisRappen: 250, gruppe: 'kasse', anzahl: 2 }]
     }
-    expect((await u.anfrage('PUT', '/api/warenkorb-entwurf', w)).json).toEqual(w)
-    expect((await u.anfrage('GET', '/api/warenkorb-entwurf')).json).toEqual(w)
+    // Ohne Feld gilt «kein Rabatt»; die Antwort nennt den Zustand immer ausdrücklich.
+    expect((await u.anfrage('PUT', '/api/warenkorb-entwurf', w)).json).toEqual({
+      ...w,
+      rabattAktiv: false
+    })
+    expect((await u.anfrage('GET', '/api/warenkorb-entwurf')).json).toEqual({
+      ...w,
+      rabattAktiv: false
+    })
     expect((await u.anfrage('PUT', '/api/warenkorb-entwurf', { zeilen: 'x' })).status).toBe(400)
+  })
+
+  it('Warenkorb-Entwurf: der Rabatt-Knopf überlebt den Neustart', async () => {
+    u = erstelleTestUmgebung()
+    const w = {
+      zeilen: [{ produktId: 'p', name: 'Kaffee', preisRappen: 250, gruppe: 'kasse', anzahl: 2 }],
+      rabattAktiv: true
+    }
+    expect((await u.anfrage('PUT', '/api/warenkorb-entwurf', w)).json).toEqual(w)
+    // Neu gelesen (wie nach einem Neustart der App) steht der Knopf weiterhin auf «Rabatt».
+    expect((await u.anfrage('GET', '/api/warenkorb-entwurf')).json).toEqual(w)
+    expect(u.repos.warenkorb.lies().rabattAktiv).toBe(true)
+
+    // Ausschalten wird genauso gesichert.
+    await u.anfrage('PUT', '/api/warenkorb-entwurf', { ...w, rabattAktiv: false })
+    expect((await u.anfrage('GET', '/api/warenkorb-entwurf')).json).toEqual({
+      ...w,
+      rabattAktiv: false
+    })
+    expect(
+      (await u.anfrage('PUT', '/api/warenkorb-entwurf', { ...w, rabattAktiv: 'ja' })).status
+    ).toBe(400)
   })
 })
 
@@ -1049,5 +1080,212 @@ describe('Statisches Renderer-Build', () => {
 
     const api = await u.anfrage('GET', '/api/nix')
     expect(api.status).toBe(404)
+  })
+})
+
+describe('Beleg-Rabatt', () => {
+  it('50% auf 27.00: Total 13.50, Rabatt 13.50, Rückgeld 6.50 bei gegeben 20.00', async () => {
+    u = erstelleTestUmgebung()
+    await u.kassentagStarten()
+    const a = await u.verkauf(
+      'v1',
+      [
+        { name: 'Winti Burger', anzahl: 2 },
+        { name: 'Getränk Dose', anzahl: 2 }
+      ],
+      { rabattProzent: 50, gegeben: 2000 }
+    )
+    expect(a.status).toBe(201)
+    expect(verkaufVon(a)).toMatchObject({
+      totalRappen: 1350,
+      rabattProzent: 50,
+      rabattRappen: 1350
+    })
+    expect(zahlungVon(a)).toMatchObject({ gegebenChfRappen: 2000, rueckgeldChfRappen: 650 })
+
+    // Positionen behalten den VOLLEN Preis als Snapshot; der Rabatt steht am Beleg
+    const positionen = a.json['positionen'] as Record<string, unknown>[]
+    expect(positionen[0]).toMatchObject({ preisSnapshotRappen: 1100, anzahl: 2 })
+    expect(positionen[1]).toMatchObject({ preisSnapshotRappen: 250, anzahl: 2 })
+
+    // Neue Spalten werden gespeichert und wieder gelesen
+    expect(u.repos.verkauf.finde('v1')).toMatchObject({
+      totalRappen: 1350,
+      rabattProzent: 50,
+      rabattRappen: 1350
+    })
+    const letzte = await u.anfrage('GET', '/api/verkauf/letzte')
+    expect((letzte.liste[0] as { verkauf: Record<string, unknown> }).verkauf).toMatchObject({
+      totalRappen: 1350,
+      rabattProzent: 50,
+      rabattRappen: 1350
+    })
+  })
+
+  it('rundet das rabattierte Total auf 5 Rappen ab (11.00 mit 33% -> 7.35, Rabatt 3.65)', async () => {
+    u = erstelleTestUmgebung()
+    await u.anfrage('PUT', '/api/einstellungen', { rabattProzent: 33 }, TEST_PIN)
+    await u.kassentagStarten()
+    const a = await u.verkauf('v1', [{ name: 'Winti Burger', anzahl: 1 }], {
+      rabattProzent: 33,
+      gegeben: 1000
+    })
+    expect(verkaufVon(a)).toMatchObject({ totalRappen: 735, rabattProzent: 33, rabattRappen: 365 })
+    expect(zahlungVon(a)['rueckgeldChfRappen']).toBe(265)
+  })
+
+  it('ohne Feld und mit rabattProzent 0 bleibt alles wie bisher', async () => {
+    u = erstelleTestUmgebung()
+    await u.kassentagStarten()
+    const ohne = await u.verkauf('v1', [{ name: 'Winti Burger', anzahl: 1 }])
+    expect(verkaufVon(ohne)).toMatchObject({
+      totalRappen: 1100,
+      rabattProzent: 0,
+      rabattRappen: 0
+    })
+    const mitNull = await u.verkauf('v2', [{ name: 'Winti Burger', anzahl: 1 }], {
+      rabattProzent: 0
+    })
+    expect(verkaufVon(mitNull)).toMatchObject({
+      totalRappen: 1100,
+      rabattProzent: 0,
+      rabattRappen: 0
+    })
+  })
+
+  it('unerlaubter Satz (30 bei Einstellung 50) -> 400 ungueltige_eingabe, kein Verkauf', async () => {
+    u = erstelleTestUmgebung()
+    await u.kassentagStarten()
+    const a = await u.verkauf('v1', [{ name: 'Winti Burger', anzahl: 2 }], {
+      rabattProzent: 30,
+      gegeben: 2000
+    })
+    expect(a.status).toBe(400)
+    expect(a.json['fehler']).toBe('ungueltige_eingabe')
+    expect(String(a.json['meldung'])).toContain('30%')
+    expect(String(a.json['meldung'])).toContain('50%')
+    expect(u.repos.verkauf.finde('v1')).toBeNull()
+
+    // 100 und negativ scheitern schon an der Feldprüfung
+    expect(
+      (await u.verkauf('v2', [{ name: 'Winti Burger', anzahl: 1 }], { rabattProzent: 100 })).status
+    ).toBe(400)
+    expect(
+      (await u.verkauf('v3', [{ name: 'Winti Burger', anzahl: 1 }], { rabattProzent: -1 })).status
+    ).toBe(400)
+  })
+
+  it('folgt dem geänderten Satz aus den Einstellungen', async () => {
+    u = erstelleTestUmgebung()
+    await u.anfrage('PUT', '/api/einstellungen', { rabattProzent: 20 }, TEST_PIN)
+    await u.kassentagStarten()
+    const alt = await u.verkauf('v1', [{ name: 'Winti Burger', anzahl: 1 }], {
+      rabattProzent: 50,
+      gegeben: 2000
+    })
+    expect(alt.status).toBe(400)
+    const neu = await u.verkauf('v2', [{ name: 'Winti Burger', anzahl: 1 }], {
+      rabattProzent: 20,
+      gegeben: 1000
+    })
+    expect(neu.status).toBe(201)
+    expect(verkaufVon(neu)).toMatchObject({
+      totalRappen: 880,
+      rabattProzent: 20,
+      rabattRappen: 220
+    })
+  })
+
+  it('bei Zahlart helfer ist der Rabatt wirkungslos (Total 0, Rabatt 0)', async () => {
+    u = erstelleTestUmgebung()
+    await u.kassentagStarten()
+    const a = await u.verkauf('v1', [{ name: 'Winti Burger', anzahl: 2 }], {
+      zahlart: 'helfer',
+      gegeben: 0,
+      rabattProzent: 50
+    })
+    expect(a.status).toBe(201)
+    expect(verkaufVon(a)).toMatchObject({ totalRappen: 0, rabattProzent: 0, rabattRappen: 0 })
+  })
+
+  it('Abschluss: Rabattzeile, Soll unverändert, Storno nimmt den Rabatt heraus', async () => {
+    u = erstelleTestUmgebung()
+    await u.kassentagStarten(20000)
+    // Voller Beleg 11.00 und Rabattbeleg 27.00 -> 13.50 (Rabatt 13.50), beide bar passend
+    await u.verkauf('v1', [{ name: 'Winti Burger', anzahl: 1 }])
+    await u.verkauf(
+      'v2',
+      [
+        { name: 'Winti Burger', anzahl: 2 },
+        { name: 'Getränk Dose', anzahl: 2 }
+      ],
+      { rabattProzent: 50, gegeben: 1350 }
+    )
+
+    const b = await u.anfrage('GET', '/api/kassentag/aktuell/bericht')
+    expect(b.json['rabatteAnzahl']).toBe(1)
+    expect(b.json['rabatteRappen']).toBe(1350)
+    // Einnahmen und Soll rechnen mit dem kassierten (rabattierten) Betrag
+    expect(b.json['barEinnahmenChfRappen']).toBe(1100 + 1350)
+    expect(b.json['sollChfRappen']).toBe(20000 + 1100 + 1350)
+    // Umsatz je Produkt bleibt brutto zu vollen Preisen
+    const burger = (b.json['produkte'] as Record<string, unknown>[]).find(
+      (p) => p['name'] === 'Winti Burger'
+    )
+    expect(burger).toMatchObject({ verkauft: 3, umsatzRappen: 3300 })
+
+    // Storno des Rabattbelegs zahlt den kassierten Betrag aus; der Rabatt zählt nicht mehr
+    const storno = await u.anfrage('POST', '/api/verkauf/v2/storno', { grund: 'tippfehler' })
+    expect(storno.status).toBe(200)
+    expect(storno.json['auszahlungChfRappen']).toBe(1350)
+    const b2 = await u.anfrage('GET', '/api/kassentag/aktuell/bericht')
+    expect(b2.json['rabatteAnzahl']).toBe(0)
+    expect(b2.json['rabatteRappen']).toBe(0)
+    expect(b2.json['sollChfRappen']).toBe(20000 + 1100 + 1350 - 1350)
+  })
+})
+
+describe('Einstellungen rabattProzent und veranstaltung', () => {
+  it('PUT prüft rabattProzent (1 bis 99) und veranstaltung (max. 40 Zeichen)', async () => {
+    u = erstelleTestUmgebung()
+    expect(
+      (await u.anfrage('PUT', '/api/einstellungen', { rabattProzent: 0 }, TEST_PIN)).status
+    ).toBe(400)
+    expect(
+      (await u.anfrage('PUT', '/api/einstellungen', { rabattProzent: 100 }, TEST_PIN)).status
+    ).toBe(400)
+    expect(
+      (await u.anfrage('PUT', '/api/einstellungen', { rabattProzent: 50.5 }, TEST_PIN)).status
+    ).toBe(400)
+    const zuLang = await u.anfrage(
+      'PUT',
+      '/api/einstellungen',
+      { veranstaltung: 'x'.repeat(41) },
+      TEST_PIN
+    )
+    expect(zuLang.status).toBe(400)
+    expect(String(zuLang.json['meldung'])).toContain('40 Zeichen')
+
+    const ok = await u.anfrage(
+      'PUT',
+      '/api/einstellungen',
+      { rabattProzent: 99, veranstaltung: '  Dorffest Musterhausen  ' },
+      TEST_PIN
+    )
+    expect(ok.status).toBe(200)
+    expect(ok.json).toMatchObject({ rabattProzent: 99, veranstaltung: 'Dorffest Musterhausen' })
+    const leer = await u.anfrage('PUT', '/api/einstellungen', { veranstaltung: '' }, TEST_PIN)
+    expect(leer.json['veranstaltung']).toBe('')
+  })
+
+  it('der Abschlussbericht trägt den Veranstaltungsnamen aus den Einstellungen', async () => {
+    u = erstelleTestUmgebung()
+    await u.kassentagStarten()
+    const ohne = await u.anfrage('GET', '/api/kassentag/aktuell/bericht')
+    expect(ohne.json['veranstaltung']).toBeUndefined()
+
+    await u.anfrage('PUT', '/api/einstellungen', { veranstaltung: 'Dorffest' }, TEST_PIN)
+    const mit = await u.anfrage('GET', '/api/kassentag/aktuell/bericht')
+    expect(mit.json['veranstaltung']).toBe('Dorffest')
   })
 })

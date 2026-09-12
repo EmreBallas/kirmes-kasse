@@ -5,6 +5,8 @@
  * Stückzahlen (je Produkt und Helferessen) zählen nur Verkäufe, die nicht am selben Tag storniert wurden.
  * Separat erfasste Spenden (nachträglich, ohne Bon) fliessen in die bestehenden Spende-Zeilen ein und
  * erhöhen den Soll-Bestand (Bar CHF -> Soll CHF, Bar EUR -> Soll EUR, Twint -> kein Bargeld); stornierte zählen nirgends.
+ * Beleg-Rabatte sind in verkauf.totalRappen bereits abgezogen (das ist der kassierte Betrag), darum bleiben alle
+ * Soll-Formeln unverändert; die Zeile "Rabatte" erklärt nur die Differenz zum Produkt-Umsatz (brutto, volle Preise).
  */
 import type { AbschlussBericht, Kassentag, Position, ProduktZeile, Spende, Storno, Verkauf, Zahlung } from './types'
 
@@ -22,6 +24,8 @@ export interface AbschlussInput {
   spenden: readonly Spende[]
   /** Anzahl Druckaufträge typ LIKE 'nachdruck_%' des Tages. */
   nachdrucke: number
+  /** Name des Anlasses (Einstellung `veranstaltung`); leer/fehlend = keine Kopfzeile auf Bon und PDF. */
+  veranstaltung?: string
   istChfRappen: number | null
   istEurCent: number | null
   /** Zeitstempel des Berichts (ISO lokal); wird unverändert übernommen. */
@@ -85,6 +89,11 @@ export function berechneAbschluss(input: AbschlussInput): AbschlussBericht {
   const helferessenStueck = summe(helferPositionen, (p) => p.anzahl)
   const helferessenEntgangenRappen = summe(helferPositionen, (p) => p.anzahl * p.preisSnapshotRappen)
 
+  // --- Rabatte: nur nicht (am selben Tag) stornierte Belege mit Rabatt; rein informativ, kein Einfluss auf Soll
+  const rabattierte = verkaeufe.filter((v) => !heuteStorniert.has(v.id) && rabattVon(v) > 0)
+  const rabatteAnzahl = rabattierte.length
+  const rabatteRappen = summe(rabattierte, rabattVon)
+
   // --- Soll / Ist / Differenz
   const sollChfRappen =
     kassentag.startgeldChfRappen + barEinnahmenChfRappen + barSpendeChfRappen - rueckgeldAusEurRappen - storniAuszahlungRappen
@@ -97,7 +106,7 @@ export function berechneAbschluss(input: AbschlussInput): AbschlussBericht {
   // --- Belege: Verkäufe des Tages minus am selben Tag stornierte
   const anzahlBelege = verkaeufe.filter((v) => !heuteStorniert.has(v.id)).length
 
-  return {
+  const bericht: AbschlussBericht = {
     kassentagId: kassentag.id,
     datum: kassentag.datum,
     kassier: kassentag.kassier,
@@ -119,6 +128,8 @@ export function berechneAbschluss(input: AbschlussInput): AbschlussBericht {
     storniAuszahlungRappen,
     helferessenStueck,
     helferessenEntgangenRappen,
+    rabatteAnzahl,
+    rabatteRappen,
     nachdrucke: input.nachdrucke,
     sollChfRappen,
     sollEurCent,
@@ -130,6 +141,14 @@ export function berechneAbschluss(input: AbschlussInput): AbschlussBericht {
     produkte: produktZeilen(positionen, zahlartVon, heuteStorniert),
     erstelltAm: input.erstelltAm ?? ''
   }
+  const veranstaltung = (input.veranstaltung ?? '').trim()
+  if (veranstaltung !== '') bericht.veranstaltung = veranstaltung
+  return bericht
+}
+
+/** Rabatt eines Belegs in Rappen; Belege aus älteren Datenbeständen ohne Feld zählen als 0. */
+function rabattVon(v: Verkauf): number {
+  return Number.isSafeInteger(v.rabattRappen) && v.rabattRappen > 0 ? v.rabattRappen : 0
 }
 
 /** Stück je Produkt: nur nicht (am selben Tag) stornierte Verkäufe; verkauft/helfer getrennt; sortiert nach Name. */

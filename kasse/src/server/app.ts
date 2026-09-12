@@ -12,12 +12,13 @@ import { cors } from 'hono/cors'
 import { createMiddleware } from 'hono/factory'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { berechneAbschluss } from '@core/abschluss'
-import { formatChf } from '@core/geld'
+import { formatChf, rabattBetrag, RABATT_PROZENT_MAX, RABATT_PROZENT_MIN } from '@core/geld'
 import {
   bonModellAbschluss,
   bonModellTest,
   bonModellVerkauf,
   formatDatum,
+  VERANSTALTUNG_MAX_LAENGE,
   type NachdruckArt
 } from '@core/bon'
 import type {
@@ -34,7 +35,6 @@ import type {
   StatusAntwort,
   Verkauf,
   VerkaufAntwort,
-  Warenkorb,
   Zahlung,
   ZahlungsWarnung
 } from '@core/types'
@@ -49,7 +49,8 @@ import {
   istStornoGrund,
   istWarenkorb,
   istZahlart,
-  type Repos
+  type Repos,
+  type WarenkorbEntwurf
 } from './repos/index'
 import type { PositionNeu } from './repos/verkaufRepo'
 import {
@@ -316,6 +317,9 @@ export function erstelleKassenApp(deps: AppDeps): KassenApp {
       // Separat erfasste Spenden des Tages (nicht stornierte): erhöhen Spende-Zeilen und Soll-Bestand
       spenden: repos.spende.fuerKassentag(kassentag.id),
       nachdrucke: repos.druckauftrag.anzahlNachdrucke(kassentag.id),
+      // Name des Anlasses (Einstellung veranstaltung, leer = nichts): Kopfzeile des Abschluss-Bons
+      // und Fusszeile der Abschluss-PDF (src/main liest ihn aus dem Bericht).
+      veranstaltung: repos.einstellung.einstellungen().veranstaltung,
       istChfRappen,
       istEurCent,
       erstelltAm
@@ -565,6 +569,9 @@ export function erstelleKassenApp(deps: AppDeps): KassenApp {
     const zahlart = auswahlFeld(o, 'zahlart', ZAHLARTEN)
     if (!istZahlart(zahlart)) throw new EingabeFehler('Unbekannte Zahlart')
     const gegeben = zahlart === 'helfer' ? 0 : ganzzahlFeld(o, 'gegeben', { min: 0 })
+    // Beleg-Rabatt: 0 (Standardfall, auch wenn das Feld fehlt) oder genau der eingestellte Satz.
+    const rabattProzent =
+      ganzzahlFeldOptional(o, 'rabattProzent', { min: 0, max: RABATT_PROZENT_MAX }) ?? 0
     const spendeBehalten = boolFeld(o, 'spendeBehalten', false)
     const bestaetigtHohesRueckgeld = boolFeld(o, 'bestaetigtHohesRueckgeld', false)
     const rohPositionen = listeFeld(o, 'positionen')
@@ -596,6 +603,15 @@ export function erstelleKassenApp(deps: AppDeps): KassenApp {
     const buchung = buchungsKassentag(c)
     if ('antwort' in buchung) return buchung.antwort
     const { kassentag } = buchung
+
+    // Erlaubt ist nur kein Rabatt oder genau der in den Einstellungen hinterlegte Satz
+    // (der Kassier drückt einen Knopf, er tippt keinen freien Prozentsatz ein).
+    const einstellungen = repos.einstellung.einstellungen()
+    if (rabattProzent !== 0 && rabattProzent !== einstellungen.rabattProzent) {
+      throw new EingabeFehler(
+        `Rabatt ${String(rabattProzent)}% ist nicht erlaubt; eingestellt sind ${String(einstellungen.rabattProzent)}%.`
+      )
+    }
 
     const positionen: PositionNeu[] = []
     let totalRappen = 0
@@ -629,10 +645,18 @@ export function erstelleKassenApp(deps: AppDeps): KassenApp {
       })
       totalRappen += produkt.preisRappen * anzahl
     }
-    // Helfer/Gratis: Total 0, Positionen behalten den Preis-Snapshot (Helferessen im Abschluss, Fachregel 8)
-    const verkaufTotal = zahlart === 'helfer' ? 0 : totalRappen
+    // Helfer/Gratis: Total 0, Positionen behalten den Preis-Snapshot (Helferessen im Abschluss, Fachregel 8).
+    // Sonst: Zwischensumme (volle Preise) minus Beleg-Rabatt = kassierter Betrag. Bei Helfer ist der
+    // Rabatt wirkungslos und wird als 0 gespeichert; die Positionen behalten immer den vollen Preis.
+    const zwischensummeRappen = totalRappen
+    const rabatt =
+      zahlart === 'helfer'
+        ? { total: 0, rabatt: 0 }
+        : rabattBetrag(zwischensummeRappen, rabattProzent)
+    const verkaufTotal = rabatt.total
+    const rabattRappen = rabatt.rabatt
+    const gespeicherterRabattProzent = rabattRappen === 0 ? 0 : rabattProzent
 
-    const einstellungen = repos.einstellung.einstellungen()
     let ergebnis
     try {
       ergebnis = berechneZahlung({
@@ -667,6 +691,8 @@ export function erstelleKassenApp(deps: AppDeps): KassenApp {
         kassentagId: kassentag.id,
         zahlart,
         totalRappen: verkaufTotal,
+        rabattProzent: gespeicherterRabattProzent,
+        rabattRappen,
         positionen,
         zahlung: {
           waehrung: ergebnis.waehrung,
@@ -964,6 +990,13 @@ export function erstelleKassenApp(deps: AppDeps): KassenApp {
       aenderung.backupPfadUsb = textOderNullFeld(o, 'backupPfadUsb')
     const port = ganzzahlFeldOptional(o, 'port', { min: 1, max: 65535 })
     if (port !== undefined) aenderung.port = port
+    const rabattProzent = ganzzahlFeldOptional(o, 'rabattProzent', {
+      min: RABATT_PROZENT_MIN,
+      max: RABATT_PROZENT_MAX
+    })
+    if (rabattProzent !== undefined) aenderung.rabattProzent = rabattProzent
+    const veranstaltung = textFeldOptional(o, 'veranstaltung', { max: VERANSTALTUNG_MAX_LAENGE })
+    if (veranstaltung !== undefined) aenderung.veranstaltung = veranstaltung.trim()
     const neuePin = textFeldOptional(o, 'neuePin')
     if (neuePin !== undefined && !istGueltigePin(neuePin))
       throw new EingabeFehler('Neue PIN: 4 bis 8 Ziffern')
@@ -1007,7 +1040,9 @@ export function erstelleKassenApp(deps: AppDeps): KassenApp {
   app.put('/api/warenkorb-entwurf', async (c) => {
     const o = await leseBody(c)
     if (!istWarenkorb(o)) throw new EingabeFehler('Warenkorb: Feld "zeilen" (Liste) fehlt')
-    const w: Warenkorb = { zeilen: o.zeilen }
+    // Der Rabatt-Knopf gilt für den ganzen Beleg und gehört damit zum Entwurf: ohne ihn stünde er
+    // nach einem Neustart wieder auf «kein Rabatt», obwohl der Warenkorb wiederhergestellt wird.
+    const w: WarenkorbEntwurf = { zeilen: o.zeilen, rabattAktiv: boolFeld(o, 'rabattAktiv', false) }
     repos.warenkorb.speichere(w)
     return c.json(w)
   })

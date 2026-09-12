@@ -100,4 +100,4 @@ export {
 } from './einstellungRepo'
 export type { EinstellungRepo, EinstellungenAenderung } from './einstellungRepo'
 export { erstelleWarenkorbRepo, istWarenkorb } from './warenkorbRepo'
-export type { WarenkorbRepo } from './warenkorbRepo'
+export type { WarenkorbRepo, WarenkorbEntwurf } from './warenkorbRepo'

@@ -1,4 +1,4 @@
-/* Kasse WintiKirmes 2026 – eigenes CSS, touch-tauglich, hoher Kontrast, keine Animationen.
+/* Vereins-Kasse – eigenes CSS, touch-tauglich, hoher Kontrast, keine Animationen.
    Layout fuer 1366x768. Rot = Fehler/Storno, Gruen = Rueckgeld/OK, coupon = warm, kasse = blau. */
 
 :root {
@@ -630,6 +630,57 @@ textarea.eingabe {
   color: var(--text-schwach);
   text-align: center;
 }
+/* Rabatt fuer den ganzen Beleg: Umschalter ueber dem Total, aktiv deutlich eingefaerbt mit Haken */
+.warenkorb-rabatt {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 12px 0 12px;
+}
+.knopf-rabatt {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 56px;
+  font-size: 20px;
+  font-weight: 700;
+  border: 3px solid var(--rand-stark);
+  background: var(--flaeche);
+  color: var(--text);
+}
+.knopf-rabatt-aktiv {
+  background: var(--primaer);
+  border-color: var(--primaer);
+  color: var(--primaer-text);
+}
+.rabatt-haken {
+  display: inline-block;
+  min-width: 22px;
+  font-size: 24px;
+  line-height: 1;
+}
+.rabatt-hinweis {
+  font-size: 15px;
+  color: var(--text-schwach);
+  text-align: center;
+}
+.warenkorb-zwischensumme,
+.warenkorb-abzug {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 4px 12px;
+  font-size: 18px;
+}
+.warenkorb-zwischensumme {
+  padding-top: 10px;
+  border-top: 2px solid var(--rand);
+}
+.warenkorb-abzug {
+  color: var(--primaer);
+  font-weight: 700;
+}
 .warenkorb-total {
   display: flex;
   align-items: baseline;
@@ -918,6 +969,12 @@ textarea.eingabe {
 .bezahlen-kopf h2 {
   font-size: 28px;
   margin: 0;
+}
+/* Kleine Zeile im Kopf des Bezahldialogs, wenn der Beleg rabattiert ist */
+.bezahlen-rabatt {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--primaer);
 }
 .bezahlen-inhalt {
   flex: 1;

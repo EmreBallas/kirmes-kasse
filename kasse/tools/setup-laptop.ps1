@@ -1,4 +1,4 @@
-# setup-laptop.ps1 - Einrichtung des Kassen-Laptops (WintiKirmes 2026), als Administrator ausfuehren.
+# setup-laptop.ps1 - Einrichtung des Kassen-Laptops fuer die Vereins-Kasse, als Administrator ausfuehren.
 #
 # Schritte:
 #   1. USB-Druckerport ermitteln und Warteschlange "TM-T20II" (Generic / Text Only, RAW) anlegen, falls sie fehlt
@@ -95,7 +95,7 @@ try {
   $verknuepfung = $shell.CreateShortcut($lnk)
   $verknuepfung.TargetPath = $exe
   $verknuepfung.WorkingDirectory = $KasseOrdner
-  $verknuepfung.Description = 'Kasse WintiKirmes'
+  $verknuepfung.Description = 'Kasse'
   $verknuepfung.Save()
   Ok "Verknuepfung $lnk -> $exe"
 } catch {

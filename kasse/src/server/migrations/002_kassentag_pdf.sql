@@ -1,3 +1,3 @@
--- Kasse WintiKirmes 2026: Migration 002
+-- Vereins-Kasse: Migration 002
 -- Pfad der Abschluss-PDF je Kassentag (absoluter Pfad, gesetzt vom Main nach dem Schreiben; NULL = keine PDF).
 ALTER TABLE kassentag ADD COLUMN pdf_pfad TEXT;

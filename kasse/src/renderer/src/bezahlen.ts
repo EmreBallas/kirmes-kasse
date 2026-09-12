@@ -55,13 +55,19 @@ export function pruefeVorSenden(ergebnis: ZahlungsErgebnis, bestaetigt: boolean)
   return 'ok'
 }
 
+/**
+ * Baut die Verkaufsanfrage. `rabattProzent` ist der für diesen Beleg wirksame Satz (0 = kein Rabatt,
+ * bei Zahlart `helfer` immer 0); die Positionen gehen mit voller Menge und vollem Preis an den Server,
+ * der Rabatt gilt für den ganzen Beleg.
+ */
 export function baueVerkaufAnfrage(
   id: string,
   warenkorb: Warenkorb,
   zahlart: Zahlart,
   gegeben: number,
   spendeBehalten: boolean,
-  bestaetigtHohesRueckgeld: boolean
+  bestaetigtHohesRueckgeld: boolean,
+  rabattProzent: number
 ): VerkaufAnfrage {
   return {
     id,
@@ -69,7 +75,8 @@ export function baueVerkaufAnfrage(
     zahlart,
     gegeben,
     spendeBehalten,
-    bestaetigtHohesRueckgeld
+    bestaetigtHohesRueckgeld,
+    rabattProzent: zahlart === 'helfer' ? 0 : rabattProzent
   }
 }
 

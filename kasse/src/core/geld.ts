@@ -1,5 +1,5 @@
 /**
- * Geldfunktionen der Kasse WintiKirmes 2026.
+ * Geldfunktionen der Vereins-Kasse.
  * Alle Beträge sind ganze Rappen (CHF) bzw. ganze Cent (EUR), der Kurs ist CHF pro EUR × 10 000.
  * Keine Fliesskomma-Arithmetik für Geld: alle Rundungen laufen über Ganzzahl-Modulo.
  */
@@ -97,6 +97,35 @@ export function chfZuEurCentAufgerundet(rappen: number, kursX10000: number): num
   const rest = zaehler % kursX10000
   const zehntel = (zaehler - rest) / kursX10000 + (rest === 0 ? 0 : 1)
   return zehntel * 10
+}
+
+/** Kleinster / grösster einstellbarer Rabattsatz in Prozent (Einstellung `rabatt_prozent`). */
+export const RABATT_PROZENT_MIN = 1
+export const RABATT_PROZENT_MAX = 99
+/** Standard-Rabattsatz für angereiste Mitglieder anderer Vereine. */
+export const RABATT_PROZENT_STANDARD = 50
+
+/**
+ * Beleg-Rabatt auf die ganze Zwischensumme (Ganzzahlarithmetik, kein Fliesskomma):
+ * total = rundeAb5Rappen(zwischensumme × (100 − prozent) ÷ 100), rabatt = zwischensumme − total.
+ * 2700/50 -> 1350 und 1350; 2705/50 -> 1350 (13.525 auf 5 Rappen abgerundet) und 1355; 1000/20 -> 800 und 200.
+ * prozent 0 = kein Rabatt (total = zwischensumme). Wirft bei prozent ausserhalb 0..99 oder nicht ganzzahlig.
+ */
+export function rabattBetrag(zwischensumme: number, prozent: number): { total: number; rabatt: number } {
+  pruefeGanzzahl(zwischensumme, 'Zwischensumme in Rappen')
+  pruefeGanzzahl(prozent, 'Rabatt in Prozent')
+  if (zwischensumme < 0) {
+    throw new Error(`Zwischensumme darf nicht negativ sein, erhalten: ${String(zwischensumme)}`)
+  }
+  if (prozent < 0 || prozent > RABATT_PROZENT_MAX) {
+    throw new Error(`Rabatt muss zwischen 0 und ${String(RABATT_PROZENT_MAX)} Prozent liegen, erhalten: ${String(prozent)}`)
+  }
+  if (prozent === 0) return { total: zwischensumme, rabatt: 0 }
+  // Ganzzahl-Division: erst × (100 − prozent), dann ÷ 100 abgerundet, dann auf 5 Rappen abgerundet.
+  const produkt = zwischensumme * (100 - prozent)
+  const rappen = (produkt - (produkt % 100)) / 100
+  const total = rundeAb5Rappen(rappen)
+  return { total, rabatt: zwischensumme - total }
 }
 
 /**

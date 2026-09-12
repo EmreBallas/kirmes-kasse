@@ -1,4 +1,4 @@
--- Kasse WintiKirmes 2026: Grundschema (Migration 001)
+-- Vereins-Kasse: Grundschema (Migration 001)
 -- Alle Beträge als ganze Rappen (CHF) bzw. Cent (EUR). Zeitstempel ISO-8601 lokal. IDs als UUID-Text.
 
 CREATE TABLE IF NOT EXISTS produkt (

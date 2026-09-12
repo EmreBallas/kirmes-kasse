@@ -2,15 +2,19 @@
  * Bezahldialog (Vollbild-Overlay): Total / Gegeben / Rueckgeld, Ziffernblock, Schnellwahl,
  * Tastatur (Ziffern, Punkt/Komma, Backspace, Enter, Esc), Live-Vorschau mit berechneZahlung.
  * Verkaufs-UUID wird beim Oeffnen erzeugt und bei "Nochmals senden" wiederverwendet (Fachregel 17).
+ *
+ * Rabatt: `rabattProzent` ist der fuer diesen Beleg wirksame Satz (0 = keiner, bei Helfer immer 0).
+ * "Total CHF" ist der bereits rabattierte, zu kassierende Betrag; im Kopf steht dann die kleine Zeile
+ * "inkl. 50% Rabatt (- CHF 13.50)". Gerechnet wird mit @core, nie im Dialog selbst.
  */
 import { useEffect, useMemo, useState, type JSX } from 'react'
 import type { VerkaufAnfrage, VerkaufAntwort, Warenkorb, Zahlart, ZahlungsErgebnis, ZahlungsWarnung } from '@core/types'
 import { formatChf, formatEur, formatKurs } from '@core/geld'
-import { total } from '@core/warenkorb'
 import { berechneZahlung } from '@core/zahlung'
 import { ApiFehler, NetzFehler, api, fehlerMeldung } from '../api'
 import { tasteAusTastatur, textAusBetrag, tippe, type Taste } from '../betrag'
 import { SCHNELLWAHL, ZAHLART_NAME, baueVerkaufAnfrage, gegebenAusText, neueVerkaufsId, pruefeVorSenden, bestaetigungsWarnung } from '../bezahlen'
+import { rabattKopfText, warenkorbSumme } from '../rabatt'
 import { Popup } from './Popup'
 import { Ziffernblock } from './Ziffernblock'
 
@@ -18,6 +22,8 @@ interface Props {
   zahlart: Zahlart
   warenkorb: Warenkorb
   kursX10000: number
+  /** wirksamer Rabattsatz dieses Belegs in Prozent; 0 = kein Rabatt (bei Helfer immer 0) */
+  rabattProzent: number
   onErfolg: (antwort: VerkaufAntwort) => void
   onAbbrechen: () => void
 }
@@ -30,8 +36,10 @@ type PopupZustand =
   | { art: 'fehler'; meldung: string }
   | null
 
-export function Bezahldialog({ zahlart, warenkorb, kursX10000, onErfolg, onAbbrechen }: Props): JSX.Element {
-  const totalRappen = total(warenkorb)
+export function Bezahldialog({ zahlart, warenkorb, kursX10000, rabattProzent, onErfolg, onAbbrechen }: Props): JSX.Element {
+  const summe = warenkorbSumme(warenkorb, rabattProzent)
+  // Was kassiert wird: der bereits rabattierte Betrag (Zahlung, Rueckgeld und Storno rechnen damit).
+  const totalRappen = summe.totalRappen
   const [verkaufId] = useState(() => neueVerkaufsId())
   const [text, setText] = useState(() => (zahlart === 'twint' ? textAusBetrag(totalRappen) : ''))
   const [twintBearbeiten, setTwintBearbeiten] = useState(false)
@@ -99,7 +107,7 @@ export function Bezahldialog({ zahlart, warenkorb, kursX10000, onErfolg, onAbbre
       setPopup({ art: 'fehler', meldung: fehlerMeldung(e) })
       return
     }
-    const anfrage = baueVerkaufAnfrage(verkaufId, warenkorb, zahlart, gegeben, spendeBehalten, false)
+    const anfrage = baueVerkaufAnfrage(verkaufId, warenkorb, zahlart, gegeben, spendeBehalten, false, summe.rabattProzent)
     const entscheid = pruefeVorSenden(erg, false)
     if (entscheid === 'nicht_gedeckt') {
       setPopup({ art: 'nicht_gedeckt' })
@@ -157,6 +165,9 @@ export function Bezahldialog({ zahlart, warenkorb, kursX10000, onErfolg, onAbbre
       <div className={`bezahlen bezahlen-${zahlart}`}>
         <div className="bezahlen-kopf">
           <h2>{ZAHLART_NAME[zahlart]}</h2>
+          {summe.rabattRappen > 0 ? (
+            <span className="bezahlen-rabatt zahl">{rabattKopfText(summe.rabattProzent, summe.rabattRappen)}</span>
+          ) : null}
           <button type="button" className="knopf knopf-neutral" onClick={onAbbrechen} disabled={sendet}>
             Zurück (Esc)
           </button>

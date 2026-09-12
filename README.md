@@ -9,6 +9,7 @@ Eine lokale Kassensoftware für Verpflegungsstände an Vereinsfesten: ein Kassie
 - **Bar EUR:** Euro-Annahme mit eigenem, in den Einstellungen gepflegtem Kurs. Der Kurs wird pro Beleg gespeichert, der CHF-Gegenwert des gegebenen Betrags auf 5 Rappen abgerundet, das **Rückgeld immer in CHF** ausgezahlt. Der Bildschirm zeigt zusätzlich «Total in EUR» (auf 0.10 EUR aufgerundet), damit der Kassier den Betrag nennen kann.
 - **Twint:** statischer QR-Code am Stand, der Kunde tippt den Betrag selbst, der Kassier prüft die Bestätigung auf dem Kundenhandy und bestätigt mit einem Tipp. Das Betragsfeld ist mit dem Total vorbelegt; eine Überzahlung wird als Twint-Spende gebucht, es gibt kein Rückgeld.
 - **Helfer/Gratis:** Beleg über 0 CHF, Coupons werden trotzdem gedruckt, die Stückzahlen erscheinen im Abschluss als Helferessen und nie als Umsatz.
+- **Rabatt:** ein Knopf im Warenkorb gibt dem ganzen Beleg einen Rabatt (Standard 50 Prozent, in den Einstellungen von 1 bis 99 Prozent änderbar) – gedacht für angereiste Mitglieder anderer Vereine. Die Positionen behalten auf dem Bon ihre vollen Preise, darunter stehen Zwischensumme, Rabattzeile und Total; der Abschluss weist die gewährten Rabatte getrennt aus.
 - **Spenden:** «stimmt so» bucht das Rückgeld als Spende. Separate Spenden (zu einem bereits gespeicherten Bar-Beleg oder ganz ohne Kauf) lassen sich nachträglich erfassen, ohne Bon und ohne Schubladenimpuls.
 - **Schweizer Eigenheiten:** Preise sind auf 5 Rappen definiert, gerundet wird nur beim EUR-Gegenwert, nie auf einzelnen Positionen. Alle Beträge werden intern als ganze Rappen gerechnet, nie als Fliesskommazahl. **Keine Mehrwertsteuer** – es gibt keine MwSt-Felder und keine MwSt-Zeilen auf dem Bon.
 - **Drucken:** pro Verkauf ein Druckauftrag mit Schubladenimpuls (nur bei Bar), einem Abholcoupon je Produktzeile der Gruppe `coupon` (Anzahl und Produktname gross, Datum, Uhrzeit, Belegnummer, «Coupon n/m») und dem Bon. Produkte der Gruppe `kasse` erscheinen nach dem Bezahlen auf dem Bildschirm als «Sofort ausgeben». Der Verkauf ist gespeichert, bevor irgendetwas gedruckt wird.
@@ -26,7 +27,7 @@ Eine lokale Kassensoftware für Verpflegungsstände an Vereinsfesten: ein Kassie
 - Keine Mehrwertsteuer-Abrechnung, kein CSV-Export, kein Buchhaltungs-Import.
 - Nur **ein Kassierpunkt**: eine Single-Instance-Sperre lässt die Kasse nur einmal laufen, es gibt keine zweite Kasse und kein Tablet als Zweitgerät.
 - Nur Windows (Kiosk, Druckweg und Einrichtungsskripte sind auf Windows ausgelegt).
-- Keine Mischzahlung (eine Zahlart pro Beleg), keine Rabatte, kein Teilstorno.
+- Keine Mischzahlung (eine Zahlart pro Beleg), kein Rabatt auf einzelne Positionen (nur auf den ganzen Beleg), kein Teilstorno.
 
 ## Bildschirmfotos
 
@@ -35,6 +36,9 @@ Verkaufsbildschirm mit Produktkacheln links, Warenkorb und Zahlartenleiste recht
 
 ![Bezahlen mit Rueckgeld](docs/bilder/bezahlen.png)
 Bezahldialog mit Ziffernblock, Schnellwahl und den drei Zeilen Total, Gegeben und Rückgeld.
+
+![Rabatt im Warenkorb](docs/bilder/rabatt.png)
+Rabatt für den ganzen Beleg: Zwischensumme, Rabattzeile und Total im Warenkorb.
 
 ![Kassenabschluss](docs/bilder/abschluss.png)
 Kassenabschluss mit Soll, Ist-Zählung und Differenz für CHF und EUR.
@@ -119,7 +123,7 @@ Details, Belegung des DK-Anschlusses und eine Fehlertabelle stehen in `docs/druc
    - `preis_rappen` – Preis in **ganzen Rappen** (`1100` = 11.00 CHF), auf 5 Rappen definiert.
    - `gruppe` – `coupon` für alles, was an einer Ausgabe abgeholt wird (es wird ein Abholcoupon gedruckt), `kasse` für alles, was sofort über die Theke geht (erscheint nach dem Bezahlen unter «Sofort ausgeben»).
    - `reihenfolge` – Position der Kachel auf dem Verkaufsbildschirm, 1 ist oben.
-3. **Einstellungen prüfen.** EUR-Kurs (Standard 0.90, gespeichert als `eurKursX10000` = 9000) und Kassen-Präfix für die Belegnummern (Standard `K1`, Belege heissen dann `K1-0001`, `K1-0002`, …).
+3. **Einstellungen prüfen.** EUR-Kurs (Standard 0.90, gespeichert als `eurKursX10000` = 9000), Kassen-Präfix für die Belegnummern (Standard `K1`, Belege heissen dann `K1-0001`, `K1-0002`, …), Rabattsatz (Standard 50 Prozent) und optional der Name der Veranstaltung, der dann auf dem Abschluss-Bon und in der PDF erscheint.
 4. **Kassentag starten.** Kassier-Kürzel und Startgeld in der Kasse erfassen (CHF, bei Bedarf zusätzlich EUR). Erst danach ist der Verkaufsbildschirm erreichbar.
 5. **Am Ende abschliessen.** Kasse zählen, Ist-Beträge für CHF und EUR eingeben, Differenz prüfen, abschliessen. Der Abschluss wird als Bon gedruckt und als PDF im Archivordner abgelegt.
 

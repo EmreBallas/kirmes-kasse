@@ -1,5 +1,5 @@
 /**
- * Gemeinsame Domänentypen der Kasse WintiKirmes 2026.
+ * Gemeinsame Domänentypen der Vereins-Kasse.
  * Reine Typen, keine Laufzeitabhängigkeiten. Wird von core, server, print, main und renderer importiert.
  *
  * Geldregeln: alle CHF-Beträge als ganze Rappen (number), alle EUR-Beträge als ganze Cent.
@@ -43,6 +43,10 @@ export interface Einstellungen {
   belegzaehler: number // letzte vergebene laufende Nummer
   backupPfadUsb: string | null
   port: number
+  /** Rabattsatz des Rabatt-Knopfs in Prozent (Standard 50, erlaubt 1 bis 99) */
+  rabattProzent: number
+  /** Freitext-Name des Anlasses (max. 40 Zeichen, leer = kein Name auf Abschluss-Bon/PDF) */
+  veranstaltung: string
 }
 
 // ---------------------------------------------------------------- Kassentag
@@ -73,7 +77,12 @@ export interface Verkauf {
   belegnr: string // "K1-0042"
   zeit: string
   zahlart: Zahlart
+  /** Bereits rabattierter Betrag: das, was kassiert wurde (Zahlung, Rückgeld, Storno rechnen damit) */
   totalRappen: number
+  /** Gewährter Rabattsatz auf den GANZEN Beleg in Prozent; 0 = kein Rabatt (auch bei zahlart helfer) */
+  rabattProzent: number
+  /** Abzug in Rappen = Zwischensumme (volle Preise) − totalRappen; 0 = kein Rabatt */
+  rabattRappen: number
   storniertAm: string | null
   stornoId: string | null
 }
@@ -83,6 +92,7 @@ export interface Position {
   verkaufId: string
   produktId: string
   nameSnapshot: string
+  /** Voller Einzelpreis zum Verkaufszeitpunkt; ein Beleg-Rabatt steht am Beleg, nie an der Position */
   preisSnapshotRappen: number
   anzahl: number
   gruppeSnapshot: Gruppe
@@ -164,10 +174,19 @@ export interface Warenkorb {
   zeilen: WarenkorbZeile[]
 }
 
+/** Summe eines Warenkorbs mit Beleg-Rabatt: Zwischensumme zu vollen Preisen, Abzug, kassierter Betrag. */
+export interface WarenkorbSumme {
+  zwischensummeRappen: number
+  rabattProzent: number
+  rabattRappen: number
+  totalRappen: number
+}
+
 // ---------------------------------------------------------------- Zahlungsberechnung (core)
 
 export interface ZahlungsEingabe {
   zahlart: Zahlart
+  /** Zu kassierender Betrag: ein Beleg-Rabatt ist hier bereits abgezogen (der Server rechnet ihn aus) */
   totalRappen: number
   /** Rappen bei bar_chf/twint, Cent bei bar_eur, 0 bei helfer */
   gegeben: number
@@ -251,6 +270,10 @@ export interface AbschlussBericht {
   storniAuszahlungRappen: number
   helferessenStueck: number
   helferessenEntgangenRappen: number
+  /** Anzahl nicht stornierter Belege des Tages mit Rabatt > 0 */
+  rabatteAnzahl: number
+  /** Σ der gewährten Rabatte dieser Belege (erklärt die Differenz zwischen Produkt-Umsatz und Einnahmen) */
+  rabatteRappen: number
   nachdrucke: number
   sollChfRappen: number
   sollEurCent: number
@@ -261,6 +284,8 @@ export interface AbschlussBericht {
   anzahlBelege: number // Verkäufe des Tages minus am selben Tag stornierte
   produkte: ProduktZeile[]
   erstelltAm: string
+  /** Name des Anlasses (Einstellung `veranstaltung`); fehlt oder leer = keine Kopfzeile auf dem Bon */
+  veranstaltung?: string
 }
 
 // ---------------------------------------------------------------- HTTP-API (server <-> renderer)
@@ -270,6 +295,8 @@ export interface VerkaufAnfrage {
   positionen: { produktId: string; anzahl: number }[]
   zahlart: Zahlart
   gegeben: number // wie ZahlungsEingabe.gegeben
+  /** Rabatt auf den ganzen Beleg in Prozent; 0 = kein Rabatt (bei zahlart helfer wirkungslos) */
+  rabattProzent: number
   spendeBehalten: boolean
   bestaetigtHohesRueckgeld: boolean
 }

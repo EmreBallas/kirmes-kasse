@@ -1,4 +1,4 @@
--- Kasse WintiKirmes 2026: Migration 003
+-- Vereins-Kasse: Migration 003
 -- Separat erfasste Spenden (nachträglich, ohne Bon): "Rückgeld als Spende" zu einem bereits
 -- abgeschlossenen Bar-Beleg (verkauf_id gesetzt) oder freie Spende ohne Kauf (verkauf_id NULL).
 -- betrag: Rappen bei bar_chf/twint, Cent bei bar_eur; betrag_chf_rappen: CHF-Gegenwert (EUR auf 5 Rappen abgerundet).

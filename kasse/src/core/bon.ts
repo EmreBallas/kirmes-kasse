@@ -138,6 +138,12 @@ function bon1Dokument(verkauf: Verkauf, positionen: readonly Position[], zahlung
     zeilen.push(zeile(positionsZeile(p.anzahl, p.nameSnapshot, formatChf(p.anzahl * p.preisSnapshotRappen))))
   }
   zeilen.push(TRENNLINIE)
+  // Beleg-Rabatt (ganzer Beleg, nicht einzelne Positionen): Zwischensumme zu vollen Preisen, dann der Abzug.
+  const rabattRappen = rabattVon(verkauf)
+  if (rabattRappen > 0) {
+    zeilen.push(zeile(labelWert('Zwischensumme', formatChf(verkauf.totalRappen + rabattRappen))))
+    zeilen.push(zeile(labelWert(`Rabatt ${String(verkauf.rabattProzent)}%`, formatAbzug(rabattRappen))))
+  }
   zeilen.push(zeile(labelWert('TOTAL CHF', formatChf(verkauf.totalRappen)), 'normal', 'links', true))
 
   switch (verkauf.zahlart) {
@@ -165,6 +171,11 @@ function bon1Dokument(verkauf: Verkauf, positionen: readonly Position[], zahlung
   zeilen.push(LEER)
   zeilen.push(zeile(`${verkauf.belegnr}  ${formatUhrzeit(verkauf.zeit)}`, 'normal', 'rechts'))
   return { zeilen }
+}
+
+/** Rabatt eines Belegs in Rappen; Belege ohne Rabatt (oder aus älteren Datenbeständen) ergeben 0. */
+function rabattVon(verkauf: Verkauf): number {
+  return Number.isSafeInteger(verkauf.rabattRappen) && verkauf.rabattRappen > 0 ? verkauf.rabattRappen : 0
 }
 
 /**
@@ -203,10 +214,19 @@ export interface AbschlussBonOptionen {
   nachdruck: boolean
 }
 
-/** Abschluss-Bon: alle Zeilen des Berichts, Stück je Produkt, Kassier, Unterschriftslinie. Keine Schublade. */
+/** Maximale Länge des Veranstaltungsnamens (Einstellung `veranstaltung`); passt doppelt breit auf den Bon. */
+export const VERANSTALTUNG_MAX_LAENGE = 40
+
+/**
+ * Abschluss-Bon: alle Zeilen des Berichts, Stück je Produkt, Kassier, Unterschriftslinie. Keine Schublade.
+ * Der Name des Anlasses kommt über `bericht.veranstaltung` (Einstellung `veranstaltung`, vom Server in den
+ * AbschlussInput gelegt) und steht – falls nicht leer – zentriert und doppelt gross über "KASSENABSCHLUSS".
+ */
 export function bonModellAbschluss(b: AbschlussBericht, opts: AbschlussBonOptionen = { nachdruck: false }): DruckModell {
   const z: BonZeile[] = []
   if (opts.nachdruck) z.push(zeile('NACHDRUCK', 'doppelt', 'mitte', true))
+  const veranstaltung = kuerze((b.veranstaltung ?? '').trim(), VERANSTALTUNG_MAX_LAENGE)
+  if (veranstaltung !== '') z.push(zeile(veranstaltung, 'doppelt', 'mitte', true))
   z.push(zeile('KASSENABSCHLUSS', 'doppelt', 'mitte', true))
   z.push(zeile(`${formatDatum(b.datum)}   Kasse ${b.kassePraefix}`, 'normal', 'mitte'))
   z.push(zeile(`Kassier: ${b.kassier}`, 'normal', 'mitte'))
@@ -227,6 +247,8 @@ export function bonModellAbschluss(b: AbschlussBericht, opts: AbschlussBonOption
   z.push(zeile(labelWert(`  davon separat erfasst (${String(b.spendenSeparatAnzahl)})`, formatChf(b.spendenSeparatChfRappen))))
   z.push(zeile(labelWert(`Storni (${String(b.storniAnzahl)})`, formatAbzug(b.storniAuszahlungRappen))))
   z.push(zeile(labelWert(`Helferessen ${String(b.helferessenStueck)} Stk`, formatChf(b.helferessenEntgangenRappen))))
+  // Rabatte: Umsatz je Produkt bleibt brutto (volle Preise), diese Zeile erklärt die Differenz zu den Einnahmen.
+  z.push(zeile(labelWert(`Rabatte (${String(b.rabatteAnzahl)} Belege)`, formatChf(b.rabatteRappen))))
   z.push(zeile(labelWert('Nachdrucke', String(b.nachdrucke))))
   z.push(TRENNLINIE)
 
@@ -271,7 +293,7 @@ export function bonModellTest(): DruckModell {
       {
         zeilen: [
           zeile('TESTDRUCK', 'doppelt', 'mitte', true),
-          zeile('Kasse WintiKirmes 2026', 'normal', 'mitte'),
+          zeile('Vereins-Kasse', 'normal', 'mitte'),
           LEER,
           zeile('Umlaute: Ärger Öl Übung äöü', 'normal', 'links'),
           zeile('123456789012345678901234567890123456789012345678'),

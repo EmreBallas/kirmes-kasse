@@ -141,3 +141,36 @@ describe('verkaufRepo.erstelle', () => {
     expect(u.repos.verkauf.letzter()?.id).toBe('v2')
   })
 })
+
+describe('verkaufRepo: Rabattspalten', () => {
+  it('schreibt und liest rabatt_prozent und rabatt_rappen (ohne Angabe 0)', () => {
+    u = erstelleTestUmgebung()
+    const tag = u.repos.kassentag.starte({
+      datum: '2026-09-19',
+      kassePraefix: 'K1',
+      kassier: 'EB',
+      startgeldChfRappen: 0,
+      startgeldEurCent: 0
+    })
+    const ohne = u.repos.verkauf.erstelle(neuerVerkauf('v1', tag.id, u))
+    expect(ohne.verkauf).toMatchObject({ rabattProzent: 0, rabattRappen: 0 })
+
+    const mit = u.repos.verkauf.erstelle({
+      ...neuerVerkauf('v2', tag.id, u),
+      rabattProzent: 50,
+      rabattRappen: 1350
+    })
+    expect(mit.verkauf).toMatchObject({
+      totalRappen: 1350,
+      rabattProzent: 50,
+      rabattRappen: 1350
+    })
+    expect(u.repos.verkauf.finde('v2')).toMatchObject({ rabattProzent: 50, rabattRappen: 1350 })
+    expect(u.repos.verkauf.detail('v2')?.verkauf.rabattRappen).toBe(1350)
+    expect(u.repos.verkauf.letzte(2)[0]?.verkauf.rabattRappen).toBe(1350)
+    expect(u.repos.verkauf.desKassentags(tag.id).verkaeufe[1]).toMatchObject({
+      rabattProzent: 50,
+      rabattRappen: 1350
+    })
+  })
+})

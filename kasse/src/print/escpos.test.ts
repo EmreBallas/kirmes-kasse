@@ -189,20 +189,36 @@ describe('baueBytes', () => {
   })
 })
 
+// Unabhaengige Referenz eines echten Testdrucks (nicht von baueBytes erzeugt, Schubladenimpuls steht
+// am Ende). Neu erzeugen mit: node tools/testdruck-bin.mjs
 describe('Referenz tools/testdruck.bin', () => {
   const referenz = new Uint8Array(
     readFileSync(join(__dirname, '..', '..', 'tools', 'testdruck.bin'))
   )
 
-  it('ist 220 Bytes gross und beginnt mit ESC @ ESC t 13', () => {
-    expect(referenz.length).toBe(220)
+  it('ist 205 Bytes gross und beginnt mit ESC @ ESC t 13', () => {
+    expect(referenz.length).toBe(205)
     expect(hex(referenz).startsWith('1b401b740d')).toBe(true)
+  })
+
+  it('traegt eine neutrale Kopfzeile: KASSE doppelt zentriert, darunter TESTDRUCK', () => {
+    // ESC a 1 (mitte), GS ! 0x11 (doppelt), "KASSE", LF, GS ! 0x00 (normal), "TESTDRUCK", LF
+    const kopf = [
+      '1b6101',
+      '1d2111',
+      Buffer.from('KASSE', 'ascii').toString('hex'),
+      '0a',
+      '1d2100',
+      Buffer.from('TESTDRUCK', 'ascii').toString('hex'),
+      '0a'
+    ].join('')
+    expect(hex(referenz).includes(kopf)).toBe(true)
   })
 
   it('Builder erzeugt dieselben Befehlsfolgen wie die Referenz', () => {
     const bytes = baueBytes({
       schublade: true,
-      dokumente: [{ zeilen: [{ text: 'WintiKirmes', groesse: 'doppelt', ausrichtung: 'mitte' }] }]
+      dokumente: [{ zeilen: [{ text: 'KASSE', groesse: 'doppelt', ausrichtung: 'mitte' }] }]
     })
     for (const befehl of [
       BEFEHL.init,

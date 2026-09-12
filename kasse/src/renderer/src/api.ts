@@ -25,9 +25,9 @@ import type {
   Verkauf,
   VerkaufAnfrage,
   VerkaufAntwort,
-  Warenkorb,
   Zahlung
 } from '@core/types'
+import type { WarenkorbEntwurf } from './rabatt'
 
 /** Port des Vite-Dev-Servers (npm run dev); nur dort liegt der Kassen-Server auf einer anderen Adresse. */
 export const VITE_DEV_PORT = '5173'
@@ -266,8 +266,8 @@ export function erstelleApi(
     testdatenLoeschen: (pin) =>
       anfrage<{ ok: boolean; backupPfad: string }>('POST', '/api/testdaten-loeschen', {}, pin, zeitlimits.lang),
 
-    warenkorbEntwurf: () => anfrage<Warenkorb>('GET', '/api/warenkorb-entwurf'),
-    warenkorbEntwurfSpeichern: (w) => anfrage<Warenkorb>('PUT', '/api/warenkorb-entwurf', w)
+    warenkorbEntwurf: () => anfrage<WarenkorbEntwurf>('GET', '/api/warenkorb-entwurf'),
+    warenkorbEntwurfSpeichern: (w) => anfrage<WarenkorbEntwurf>('PUT', '/api/warenkorb-entwurf', w)
   }
 }
 
@@ -312,8 +312,9 @@ export interface KasseApi {
   einstellungenSpeichern(daten: EinstellungenAenderung, pin: string): Promise<Einstellungen>
   pinPruefen(pin: string): Promise<{ ok: boolean }>
   testdatenLoeschen(pin: string): Promise<{ ok: boolean; backupPfad: string }>
-  warenkorbEntwurf(): Promise<Warenkorb>
-  warenkorbEntwurfSpeichern(w: Warenkorb): Promise<Warenkorb>
+  /** Gesicherter Warenkorb-Entwurf inkl. Rabatt-Zustand (`rabattAktiv` fehlt bei alten Entwürfen) */
+  warenkorbEntwurf(): Promise<WarenkorbEntwurf>
+  warenkorbEntwurfSpeichern(w: WarenkorbEntwurf): Promise<WarenkorbEntwurf>
 }
 
 /** Standard-Client der App (globales fetch, API_BASE, Standard-Zeitlimits). */

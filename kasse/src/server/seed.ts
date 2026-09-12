@@ -17,6 +17,10 @@ export interface SeedEinstellungen {
   druckerName?: string
   port?: number
   backupPfadUsb?: string | null
+  /** Rabattsatz des Rabatt-Knopfs in Prozent (1 bis 99); fehlt der Schlüssel, gilt der Standard 50. */
+  rabattProzent?: number
+  /** Name des Anlasses (max. 40 Zeichen); fehlt der Schlüssel, bleibt er leer. */
+  veranstaltung?: string
 }
 
 export interface SeedProdukt {
@@ -99,6 +103,8 @@ export function leseEinstellungsSeed(pfade: string[]): {
     if (typeof inhalt['backupPfadUsb'] === 'string' || inhalt['backupPfadUsb'] === null) {
       seed.backupPfadUsb = inhalt['backupPfadUsb'] as string | null
     }
+    if (typeof inhalt['rabattProzent'] === 'number') seed.rabattProzent = inhalt['rabattProzent']
+    if (typeof inhalt['veranstaltung'] === 'string') seed.veranstaltung = inhalt['veranstaltung']
     return { datei: pfad, seed }
   }
   return { datei: null, seed: {} }
@@ -140,6 +146,8 @@ export function seedEinstellungen(
         'backup_pfad_usb',
         seed.backupPfadUsb === undefined ? undefined : (seed.backupPfadUsb ?? '')
       ],
+      ['rabatt_prozent', seed.rabattProzent === undefined ? undefined : String(seed.rabattProzent)],
+      ['veranstaltung', seed.veranstaltung],
       ['belegzaehler', '0']
     ]
     for (const [key, value] of paare) {

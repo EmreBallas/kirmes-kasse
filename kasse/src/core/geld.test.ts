@@ -7,6 +7,7 @@ import {
   formatEur,
   formatKurs,
   parseBetrag,
+  rabattBetrag,
   rundeAb5Rappen
 } from './geld'
 
@@ -123,5 +124,36 @@ describe('parseBetrag', () => {
     expect(parseBetrag('12.345')).toBeNull()
     expect(parseBetrag('1.2.3')).toBeNull()
     expect(parseBetrag('.')).toBeNull()
+  })
+})
+
+describe('rabattBetrag – Beleg-Rabatt auf die ganze Zwischensumme', () => {
+  it('50 Prozent: halbiert und auf 5 Rappen abgerundet', () => {
+    expect(rabattBetrag(2700, 50)).toEqual({ total: 1350, rabatt: 1350 })
+    expect(rabattBetrag(2705, 50)).toEqual({ total: 1350, rabatt: 1355 }) // 13.525 -> 13.50
+    expect(rabattBetrag(500, 50)).toEqual({ total: 250, rabatt: 250 })
+    expect(rabattBetrag(2505, 50)).toEqual({ total: 1250, rabatt: 1255 }) // 12.525 -> 12.50
+  })
+  it('andere Sätze und 0 Prozent', () => {
+    expect(rabattBetrag(1000, 20)).toEqual({ total: 800, rabatt: 200 })
+    expect(rabattBetrag(2700, 0)).toEqual({ total: 2700, rabatt: 0 })
+    expect(rabattBetrag(0, 50)).toEqual({ total: 0, rabatt: 0 })
+    expect(rabattBetrag(1000, 99)).toEqual({ total: 10, rabatt: 990 })
+    expect(rabattBetrag(2700, 1)).toEqual({ total: 2670, rabatt: 30 }) // 26.73 -> 26.70
+  })
+  it('Summe bleibt erhalten und total ist immer ein 5-Rappen-Betrag', () => {
+    for (let zwischensumme = 0; zwischensumme <= 5000; zwischensumme += 5) {
+      const r = rabattBetrag(zwischensumme, 50)
+      expect(r.total + r.rabatt).toBe(zwischensumme)
+      expect(r.total % 5).toBe(0)
+      expect(r.total).toBeLessThanOrEqual(zwischensumme)
+    }
+  })
+  it('wirft bei ungültigem Satz oder ungültiger Zwischensumme', () => {
+    expect(() => rabattBetrag(1000, 100)).toThrow()
+    expect(() => rabattBetrag(1000, -1)).toThrow()
+    expect(() => rabattBetrag(1000, 12.5)).toThrow()
+    expect(() => rabattBetrag(1000.5, 50)).toThrow()
+    expect(() => rabattBetrag(-100, 50)).toThrow()
   })
 })

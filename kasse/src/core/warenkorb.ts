@@ -1,7 +1,8 @@
 /**
  * Warenkorb-Logik (rein, unveränderlich): jede Funktion liefert einen neuen Warenkorb.
  */
-import type { Gruppe, Produkt, Warenkorb, WarenkorbZeile } from './types'
+import { rabattBetrag } from './geld'
+import type { Gruppe, Produkt, Warenkorb, WarenkorbSumme, WarenkorbZeile } from './types'
 
 /** Was der Warenkorb von einem Produkt braucht (Produkt oder Teilmenge davon). */
 export type WarenkorbProdukt = Pick<Produkt, 'id' | 'name' | 'preisRappen' | 'gruppe'>
@@ -59,6 +60,22 @@ export function entfernen(w: Warenkorb, produktId: string): Warenkorb {
 /** Total in Rappen: Σ preis × anzahl. Keine Rundung auf Positionen (Fachregel 5). */
 export function total(w: Warenkorb): number {
   return w.zeilen.reduce((summe, z) => summe + z.preisRappen * z.anzahl, 0)
+}
+
+/**
+ * Summe mit Beleg-Rabatt: Zwischensumme zu vollen Preisen, Abzug und kassierter Betrag.
+ * Der Rabatt gilt für den ganzen Warenkorb, nie für einzelne Zeilen (die Positionen behalten den vollen Preis).
+ * prozent 0 -> Rabatt 0 und total = Zwischensumme.
+ */
+export function summeMitRabatt(w: Warenkorb, rabattProzent: number): WarenkorbSumme {
+  const zwischensummeRappen = total(w)
+  const r = rabattBetrag(zwischensummeRappen, rabattProzent)
+  return {
+    zwischensummeRappen,
+    rabattProzent: r.rabatt === 0 ? 0 : rabattProzent,
+    rabattRappen: r.rabatt,
+    totalRappen: r.total
+  }
 }
 
 /** Anzahl Artikel (Σ anzahl über alle Zeilen). */

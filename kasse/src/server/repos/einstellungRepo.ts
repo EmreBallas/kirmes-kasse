@@ -2,6 +2,8 @@
  * Einstellungen (key/value als Text) inkl. PIN (sha256(salt + ':' + pin), hex) und Belegzähler.
  */
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
+import { VERANSTALTUNG_MAX_LAENGE } from '@core/bon'
+import { RABATT_PROZENT_MAX, RABATT_PROZENT_MIN, RABATT_PROZENT_STANDARD } from '@core/geld'
 import type { Einstellungen } from '@core/types'
 import { text } from '../sql'
 import type { RepoKontext } from './kontext'
@@ -12,7 +14,9 @@ export const STANDARD_EINSTELLUNGEN: Einstellungen = {
   kassenPraefix: 'K1',
   belegzaehler: 0,
   backupPfadUsb: null,
-  port: 47100
+  port: 47100,
+  rabattProzent: RABATT_PROZENT_STANDARD,
+  veranstaltung: ''
 }
 
 /** Felder, die über PUT /api/einstellungen geändert werden dürfen (belegzaehler nicht). */
@@ -52,6 +56,12 @@ function ganzzahlOder(wert: string | null, standard: number): number {
   return Number.isSafeInteger(n) ? n : standard
 }
 
+/** Rabattsatz aus der Tabelle; unsinnige Werte (auch aus Altdaten) fallen auf den Standard 50 zurück. */
+function rabattProzentOder(wert: string | null): number {
+  const n = ganzzahlOder(wert, RABATT_PROZENT_STANDARD)
+  return n >= RABATT_PROZENT_MIN && n <= RABATT_PROZENT_MAX ? n : RABATT_PROZENT_STANDARD
+}
+
 export function erstelleEinstellungRepo(k: RepoKontext): EinstellungRepo {
   const { db } = k
 
@@ -74,7 +84,12 @@ export function erstelleEinstellungRepo(k: RepoKontext): EinstellungRepo {
       kassenPraefix: lies('kassen_praefix') ?? STANDARD_EINSTELLUNGEN.kassenPraefix,
       belegzaehler: ganzzahlOder(lies('belegzaehler'), STANDARD_EINSTELLUNGEN.belegzaehler),
       backupPfadUsb: backup === null || backup === '' ? null : backup,
-      port: ganzzahlOder(lies('port'), STANDARD_EINSTELLUNGEN.port)
+      port: ganzzahlOder(lies('port'), STANDARD_EINSTELLUNGEN.port),
+      rabattProzent: rabattProzentOder(lies('rabatt_prozent')),
+      veranstaltung: (lies('veranstaltung') ?? STANDARD_EINSTELLUNGEN.veranstaltung).slice(
+        0,
+        VERANSTALTUNG_MAX_LAENGE
+      )
     }
   }
 
@@ -94,6 +109,9 @@ export function erstelleEinstellungRepo(k: RepoKontext): EinstellungRepo {
       if (a.kassenPraefix !== undefined) setze('kassen_praefix', a.kassenPraefix)
       if (a.backupPfadUsb !== undefined) setze('backup_pfad_usb', a.backupPfadUsb ?? '')
       if (a.port !== undefined) setze('port', String(a.port))
+      if (a.rabattProzent !== undefined) setze('rabatt_prozent', String(a.rabattProzent))
+      if (a.veranstaltung !== undefined)
+        setze('veranstaltung', a.veranstaltung.slice(0, VERANSTALTUNG_MAX_LAENGE))
       return einstellungen()
     },
     hatPin() {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { berechneAbschluss, type AbschlussInput } from './abschluss'
 import type { Kassentag, Position, Spende, SpendeTyp, Storno, Verkauf, Zahlart, Zahlung } from './types'
-import { eurZuChfRappen } from './geld'
+import { eurZuChfRappen, rabattBetrag } from './geld'
 import { berechneZahlung } from './zahlung'
 
 const SAMSTAG: Kassentag = {
@@ -37,9 +37,14 @@ function verkauf(
   zahlart: Zahlart,
   artikel: Artikel[],
   gegeben: number,
-  opts: { kurs?: number; spendeBehalten?: boolean; zeit?: string } = {}
+  opts: { kurs?: number; spendeBehalten?: boolean; zeit?: string; rabattProzent?: number } = {}
 ): { verkauf: Verkauf; positionen: Position[]; zahlung: Zahlung } {
-  const totalRappen = artikel.reduce((s, a) => s + a.preis * a.anzahl, 0)
+  const zwischensumme = artikel.reduce((s, a) => s + a.preis * a.anzahl, 0)
+  // Wie der Server: Rabatt auf den ganzen Beleg, bei Helfer wirkungslos; Positionen behalten volle Preise.
+  const rabattProzent = zahlart === 'helfer' ? 0 : (opts.rabattProzent ?? 0)
+  const r = rabattBetrag(zwischensumme, rabattProzent)
+  // Helfer: der Server speichert Total 0 (Fachregel 8), sonst den rabattierten Betrag
+  const totalRappen = zahlart === 'helfer' ? 0 : r.total
   const z = berechneZahlung({
     zahlart,
     totalRappen,
@@ -56,6 +61,8 @@ function verkauf(
       zeit: opts.zeit ?? `${tag.datum}T12:00:00`,
       zahlart,
       totalRappen,
+      rabattProzent: r.rabatt === 0 ? 0 : rabattProzent,
+      rabattRappen: r.rabatt,
       storniertAm: null,
       stornoId: null
     },
@@ -374,5 +381,78 @@ describe('berechneAbschluss – gemischter Tag', () => {
     expect(b.barEinnahmenChfRappen).toBe(1600)
     expect(b.storniAnzahl).toBe(0)
     expect(b.anzahlBelege).toBe(1)
+  })
+})
+
+describe('berechneAbschluss – Beleg-Rabatte', () => {
+  const MENUE: Artikel = { produktId: 'menue', name: 'Menü', preis: 2700, anzahl: 1 }
+
+  it('Bar-Beleg mit 50% Rabatt: Einnahmen rabattiert, Rabattzeile ausgewiesen, Soll = Startgeld + kassiert', () => {
+    const v = verkauf('r1', SAMSTAG, 'bar_chf', [MENUE], 1350, { rabattProzent: 50 })
+    expect(v.verkauf.totalRappen).toBe(1350)
+    expect(v.verkauf.rabattRappen).toBe(1350)
+    const b = berechneAbschluss(input(SAMSTAG, [v]))
+    expect(b.barEinnahmenChfRappen).toBe(1350)
+    expect(b.rabatteAnzahl).toBe(1)
+    expect(b.rabatteRappen).toBe(1350)
+    expect(b.sollChfRappen).toBe(20000 + 1350)
+    expect(b.sollEurCent).toBe(0)
+    // Umsatz je Produkt bleibt brutto zu vollen Preisen; die Rabattzeile erklärt die Differenz
+    expect(b.produkte).toEqual([{ produktId: 'menue', name: 'Menü', verkauft: 1, helfer: 0, umsatzRappen: 2700 }])
+  })
+
+  it('stornierter Rabattbeleg zählt nicht in der Rabattzeile', () => {
+    const v = verkauf('r2', SAMSTAG, 'bar_chf', [MENUE], 1350, { rabattProzent: 50 })
+    const st = storno(v.verkauf, SAMSTAG)
+    const b = berechneAbschluss(input(SAMSTAG, [v], [st]))
+    expect(b.rabatteAnzahl).toBe(0)
+    expect(b.rabatteRappen).toBe(0)
+    expect(b.barEinnahmenChfRappen).toBe(1350) // brutto
+    expect(b.storniAuszahlungRappen).toBe(1350) // ausbezahlt wird der kassierte Betrag
+    expect(b.sollChfRappen).toBe(20000)
+  })
+
+  it('mehrere Belege: Anzahl und Summe nur der rabattierten', () => {
+    const v1 = verkauf('r3', SAMSTAG, 'bar_chf', [MENUE], 1350, { rabattProzent: 50 })
+    const v2 = verkauf('r4', SAMSTAG, 'twint', [BURGER], 550, { rabattProzent: 50 }) // 11.00 -> 5.50
+    const v3 = verkauf('r5', SAMSTAG, 'bar_chf', [BURGER], 1100) // ohne Rabatt
+    expect(v2.verkauf.totalRappen).toBe(550)
+    const b = berechneAbschluss(input(SAMSTAG, [v1, v2, v3]))
+    expect(b.rabatteAnzahl).toBe(2)
+    expect(b.rabatteRappen).toBe(1350 + 550)
+    expect(b.twintUmsatzRappen).toBe(550)
+    expect(b.sollChfRappen).toBe(20000 + 1350 + 1100)
+    expect(b.anzahlBelege).toBe(3)
+  })
+
+  it('Helfer-Beleg: Rabatt wirkungslos, Total 0, keine Rabattzeile', () => {
+    const v = verkauf('r6', SAMSTAG, 'helfer', [MENUE], 0, { rabattProzent: 50 })
+    expect(v.verkauf.totalRappen).toBe(0)
+    expect(v.verkauf.rabattProzent).toBe(0)
+    expect(v.verkauf.rabattRappen).toBe(0)
+    const b = berechneAbschluss(input(SAMSTAG, [v]))
+    expect(b.rabatteAnzahl).toBe(0)
+    expect(b.rabatteRappen).toBe(0)
+    expect(b.helferessenEntgangenRappen).toBe(2700) // entgangener Umsatz zum vollen Preis
+    expect(b.sollChfRappen).toBe(20000)
+  })
+
+  it('Bar-EUR mit Rabatt: Rückgeld und Soll rechnen mit dem rabattierten Total', () => {
+    const v = verkauf('r7', SAMSTAG, 'bar_eur', [MENUE], 2000, { rabattProzent: 50 }) // 20 EUR -> 18.00 CHF
+    expect(v.verkauf.totalRappen).toBe(1350)
+    expect(v.zahlung.rueckgeldChfRappen).toBe(450)
+    const b = berechneAbschluss(input(SAMSTAG, [v]))
+    expect(b.rabatteRappen).toBe(1350)
+    expect(b.sollChfRappen).toBe(20000 - 450)
+    expect(b.sollEurCent).toBe(2000)
+  })
+
+  it('Veranstaltung wird durchgereicht, leer bleibt weg', () => {
+    const ohne = berechneAbschluss(input(SAMSTAG, []))
+    expect(ohne.veranstaltung).toBeUndefined()
+    const leer = berechneAbschluss(input(SAMSTAG, [], [], { veranstaltung: '   ' }))
+    expect(leer.veranstaltung).toBeUndefined()
+    const mit = berechneAbschluss(input(SAMSTAG, [], [], { veranstaltung: ' Dorffest Musterhausen ' }))
+    expect(mit.veranstaltung).toBe('Dorffest Musterhausen')
   })
 })

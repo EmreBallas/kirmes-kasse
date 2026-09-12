@@ -142,3 +142,35 @@ describe('fuehreSeedAus', () => {
     expect(p?.aktiv).toBe(false)
   })
 })
+
+describe('Seed: rabattProzent und veranstaltung', () => {
+  it('ohne Seed-Datei gelten Standard-Rabatt 50 und leerer Veranstaltungsname', () => {
+    const db = frischeDb()
+    fuehreSeedAus({ db, produktePfad: PRODUKTE_SEED, einstellungsPfade: [] })
+    expect(erstelleRepos(db).einstellung.einstellungen()).toMatchObject({
+      rabattProzent: 50,
+      veranstaltung: ''
+    })
+  })
+
+  it('übernimmt rabattProzent und veranstaltung aus der Seed-Datei', () => {
+    const db = frischeDb()
+    const o = tempOrdner()
+    const pfad = join(o, 'seed.local.json')
+    writeFileSync(
+      pfad,
+      JSON.stringify({ rabattProzent: 40, veranstaltung: 'Dorffest Musterhausen' })
+    )
+    const e = fuehreSeedAus({ db, produktePfad: PRODUKTE_SEED, einstellungsPfade: [pfad] })
+    expect(e.einstellungenGesetzt).toContain('rabatt_prozent')
+    expect(e.einstellungenGesetzt).toContain('veranstaltung')
+    expect(erstelleRepos(db).einstellung.einstellungen()).toMatchObject({
+      rabattProzent: 40,
+      veranstaltung: 'Dorffest Musterhausen'
+    })
+    expect(leseEinstellungsSeed([pfad]).seed).toEqual({
+      rabattProzent: 40,
+      veranstaltung: 'Dorffest Musterhausen'
+    })
+  })
+})

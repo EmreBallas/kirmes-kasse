@@ -45,9 +45,15 @@ function differenzKlasse(wert: number | null): string {
   return wert < 0 ? 'differenz-minus' : 'differenz-plus'
 }
 
-/** Kennzeile am Ende des Inhalts (ohne UUID): "Kasse WintiKirmes 2026 · Kassentag Sa 12.09.2026 K1". */
+/**
+ * Kennzeile am Ende des Inhalts (ohne UUID). Mit gesetzter Einstellung `veranstaltung`
+ * "Sommerfest 2026 · Kassentag Sa 12.09.2026 K1", sonst "Kassentag Sa 12.09.2026 K1".
+ * Kein fester Projektname: die Software wird von mehreren Vereinen genutzt.
+ */
 export function pdfKennzeile(b: AbschlussBericht): string {
-  return `Kasse WintiKirmes 2026 · Kassentag ${formatDatum(b.datum)} ${b.kassePraefix}`
+  const kassentag = `Kassentag ${formatDatum(b.datum)} ${b.kassePraefix}`
+  const veranstaltung = (b.veranstaltung ?? '').trim()
+  return veranstaltung === '' ? kassentag : `${veranstaltung} · ${kassentag}`
 }
 
 /** Baut das HTML-Dokument des Abschlusses (reine Funktion, ohne Electron). */
@@ -76,6 +82,8 @@ export function abschlussHtml(b: AbschlussBericht): string {
       label: `Helferessen ${String(b.helferessenStueck)} Stk (entgangen)`,
       wert: formatChf(b.helferessenEntgangenRappen)
     },
+    // Umsatz je Produkt bleibt brutto zu vollen Preisen; diese Zeile erklaert die Differenz zu den Einnahmen.
+    { label: `Rabatte (${String(b.rabatteAnzahl)})`, wert: formatChf(b.rabatteRappen) },
     { label: 'Nachdrucke', wert: String(b.nachdrucke) }
   ]
   const soll: Zeile[] = [

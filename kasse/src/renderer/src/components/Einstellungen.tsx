@@ -1,13 +1,20 @@
 /**
- * Einstellungen (hinter PIN): EUR-Kurs, Druckername, Kassen-Praefix, PIN aendern, Testdruck,
- * Testdaten loeschen (doppelte Rueckfrage), Transport-Anzeige.
+ * Einstellungen (hinter PIN): EUR-Kurs, Druckername, Kassen-Praefix, Rabattsatz, Veranstaltung,
+ * PIN aendern, Testdruck, Testdaten loeschen (doppelte Rueckfrage), Transport-Anzeige.
  */
 import { useEffect, useState, type JSX } from 'react'
 import type { Einstellungen as EinstellungenTyp, StatusAntwort } from '@core/types'
-import { chfZuEurCentAufgerundet, formatEur, formatKurs } from '@core/geld'
+import { RABATT_PROZENT_MAX, RABATT_PROZENT_MIN, chfZuEurCentAufgerundet, formatEur, formatKurs } from '@core/geld'
+import { VERANSTALTUNG_MAX_LAENGE } from '@core/bon'
 import { ApiFehler, api, fehlerMeldung, type EinstellungenAenderung } from '../api'
 import { istGueltigePin, parseKurs } from '../betrag'
+import { parseRabattSatz, rabattSatz } from '../rabatt'
 import { Popup } from './Popup'
+
+/** Freitext aus den Einstellungen; fehlt das Feld (aelterer Server), gilt leer. */
+function textOderLeer(wert: string | undefined): string {
+  return typeof wert === 'string' ? wert : ''
+}
 
 interface Props {
   pin: string
@@ -22,6 +29,8 @@ export function Einstellungen({ pin, status, einstellungen, onGeaendert, onZurue
   const [kurs, setKurs] = useState('')
   const [druckerName, setDruckerName] = useState('')
   const [praefix, setPraefix] = useState('')
+  const [rabatt, setRabatt] = useState('')
+  const [veranstaltung, setVeranstaltung] = useState('')
   const [pin1, setPin1] = useState('')
   const [pin2, setPin2] = useState('')
   const [meldung, setMeldung] = useState<{ text: string; art: 'ok' | 'fehler' } | null>(null)
@@ -33,10 +42,13 @@ export function Einstellungen({ pin, status, einstellungen, onGeaendert, onZurue
       setKurs(formatKurs(einstellungen.eurKursX10000))
       setDruckerName(einstellungen.druckerName)
       setPraefix(einstellungen.kassenPraefix)
+      setRabatt(String(rabattSatz(einstellungen)))
+      setVeranstaltung(textOderLeer(einstellungen.veranstaltung))
     }
   }, [einstellungen])
 
   const kursX10000 = parseKurs(kurs)
+  const rabattProzent = parseRabattSatz(rabatt)
   const beispielEur = kursX10000 !== null ? chfZuEurCentAufgerundet(7500, kursX10000) : null
 
   const fehlerBehandeln = (e: unknown): void => {
@@ -71,9 +83,23 @@ export function Einstellungen({ pin, status, einstellungen, onGeaendert, onZurue
         setMeldung({ text: 'Druckername und Kassen-Präfix dürfen nicht leer sein.', art: 'fehler' })
         return
       }
+      if (rabattProzent === null) {
+        setMeldung({
+          text: `Rabattsatz muss eine ganze Zahl zwischen ${String(RABATT_PROZENT_MIN)} und ${String(RABATT_PROZENT_MAX)} sein.`,
+          art: 'fehler'
+        })
+        return
+      }
+      const va = veranstaltung.trim()
+      if (va.length > VERANSTALTUNG_MAX_LAENGE) {
+        setMeldung({ text: `Veranstaltung darf höchstens ${String(VERANSTALTUNG_MAX_LAENGE)} Zeichen lang sein.`, art: 'fehler' })
+        return
+      }
       daten.eurKursX10000 = kursX10000
       daten.druckerName = dn
       daten.kassenPraefix = pf
+      daten.rabattProzent = rabattProzent
+      daten.veranstaltung = va
     }
     setSendet(true)
     try {
@@ -165,6 +191,37 @@ export function Einstellungen({ pin, status, einstellungen, onGeaendert, onZurue
             <input type="text" className="eingabe" value={praefix} onChange={(ev) => setPraefix(ev.target.value)} maxLength={8} autoComplete="off" />
             <span className="feld-hinweis zahl">
               Letzte Belegnummer: {einstellungen !== null ? `${einstellungen.kassenPraefix}-${String(einstellungen.belegzaehler).padStart(4, '0')}` : '–'}
+            </span>
+          </label>
+          <label className="feld">
+            <span>Rabattsatz in Prozent (Knopf im Warenkorb)</span>
+            <input
+              type="text"
+              inputMode="numeric"
+              className={`eingabe zahl${rabattProzent === null ? ' eingabe-fehler' : ''}`}
+              value={rabatt}
+              onChange={(ev) => setRabatt(ev.target.value)}
+              maxLength={2}
+              autoComplete="off"
+            />
+            <span className="feld-hinweis">
+              {rabattProzent !== null
+                ? `Knopf im Warenkorb: «${String(rabattProzent)}% Rabatt» auf den ganzen Beleg`
+                : `ganze Zahl von ${String(RABATT_PROZENT_MIN)} bis ${String(RABATT_PROZENT_MAX)}`}
+            </span>
+          </label>
+          <label className="feld">
+            <span>Veranstaltung (Freitext)</span>
+            <input
+              type="text"
+              className="eingabe"
+              value={veranstaltung}
+              onChange={(ev) => setVeranstaltung(ev.target.value)}
+              maxLength={VERANSTALTUNG_MAX_LAENGE}
+              autoComplete="off"
+            />
+            <span className="feld-hinweis">
+              erscheint auf dem Abschluss-Bon und in der PDF · höchstens {VERANSTALTUNG_MAX_LAENGE} Zeichen · leer lassen = kein Name
             </span>
           </label>
           <div className="feld">

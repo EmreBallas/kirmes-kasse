@@ -90,7 +90,8 @@ describe('api-Client', () => {
       zahlart: 'bar_chf',
       gegeben: 0,
       spendeBehalten: false,
-      bestaetigtHohesRueckgeld: false
+      bestaetigtHohesRueckgeld: false,
+      rabattProzent: 0
     })
     await expect(versuch).rejects.toBeInstanceOf(ApiFehler)
     try {
@@ -133,7 +134,7 @@ describe('api-Client', () => {
     const api = erstelleApi(haengend, '', { standard: 20, status: 10, lang: 30 })
     const start = Date.now()
     try {
-      await api.verkauf({ id: 'u1', positionen: [], zahlart: 'bar_chf', gegeben: 0, spendeBehalten: false, bestaetigtHohesRueckgeld: false })
+      await api.verkauf({ id: 'u1', positionen: [], zahlart: 'bar_chf', gegeben: 0, spendeBehalten: false, bestaetigtHohesRueckgeld: false, rabattProzent: 0 })
       expect.unreachable('haette abbrechen muessen')
     } catch (e) {
       expect(e).toBeInstanceOf(NetzFehler)

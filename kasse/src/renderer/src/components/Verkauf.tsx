@@ -8,6 +8,7 @@ import type { Einstellungen, Kassentag, Produkt, Spende, StatusAntwort, VerkaufA
 import { entfernen, hinzufuegen, leererWarenkorb, mengeAendern } from '@core/warenkorb'
 import { api, fehlerMeldung } from '../api'
 import type { BannerZustand } from '../bezahlen'
+import { rabattSatz, wirksamerSatz } from '../rabatt'
 import { spendeBannerText } from '../spende'
 import { Banner } from './Banner'
 import { Bezahldialog } from './Bezahldialog'
@@ -23,6 +24,9 @@ interface Props {
   einstellungen: Einstellungen | null
   warenkorb: Warenkorb
   onWarenkorb: (w: Warenkorb) => void
+  /** Rabatt-Knopf im Warenkorb gedrueckt (gilt fuer den ganzen Beleg) */
+  rabattAktiv: boolean
+  onRabatt: (aktiv: boolean) => void
   banner: BannerZustand | null
   onBanner: (b: VerkaufAntwort | null) => void
   /** "Rueckgeld als Spende" zum Beleg im Banner wurde erfasst */
@@ -82,6 +86,7 @@ export function Verkauf(p: Props): JSX.Element {
 
   const kurs = p.einstellungen?.eurKursX10000 ?? 0
   const eurMoeglich = kurs > 0
+  const satz = rabattSatz(p.einstellungen)
 
   return (
     <div className="seite seite-verkauf">
@@ -147,7 +152,13 @@ export function Verkauf(p: Props): JSX.Element {
           eurMoeglich={eurMoeglich}
           onMenge={(id, delta) => p.onWarenkorb(mengeAendern(p.warenkorb, id, delta))}
           onEntfernen={(id) => p.onWarenkorb(entfernen(p.warenkorb, id))}
-          onLeeren={() => p.onWarenkorb(leererWarenkorb())}
+          onLeeren={() => {
+            p.onWarenkorb(leererWarenkorb())
+            p.onRabatt(false)
+          }}
+          rabattSatz={satz}
+          rabattAktiv={p.rabattAktiv}
+          onRabatt={p.onRabatt}
           onZahlart={(za) => {
             if (p.warenkorb.zeilen.length === 0) return
             if (!bannerFest) p.onBanner(null)
@@ -177,10 +188,13 @@ export function Verkauf(p: Props): JSX.Element {
           zahlart={zahlart}
           warenkorb={p.warenkorb}
           kursX10000={kurs > 0 ? kurs : 1}
+          rabattProzent={wirksamerSatz(p.rabattAktiv, satz, zahlart)}
           onAbbrechen={() => setZahlart(null)}
           onErfolg={(antwort) => {
             setZahlart(null)
             p.onWarenkorb(leererWarenkorb())
+            // Rabatt gilt immer nur fuer einen Beleg: naechster Kunde faengt ohne Rabatt an.
+            p.onRabatt(false)
             setBannerFest(false)
             p.onBanner(antwort)
             void ladeProdukte()

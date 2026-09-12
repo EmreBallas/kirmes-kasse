@@ -18,7 +18,12 @@ export interface VerkaufNeu {
   id: string
   kassentagId: string
   zahlart: Zahlart
+  /** Bereits rabattierter Betrag: das, was kassiert wird. */
   totalRappen: number
+  /** Gewährter Beleg-Rabatt in Prozent; fehlt oder 0 = kein Rabatt (auch bei zahlart helfer). */
+  rabattProzent?: number
+  /** Abzug in Rappen = Zwischensumme (volle Preise) − totalRappen; fehlt oder 0 = kein Rabatt. */
+  rabattRappen?: number
   positionen: PositionNeu[]
   zahlung: ZahlungNeu
 }
@@ -62,7 +67,8 @@ export interface VerkaufRepo {
   markiereStorniert(id: string, stornoId: string): void
 }
 
-const V_SPALTEN = 'id, kassentag_id, belegnr, zeit, zahlart, total_rappen, storniert_am, storno_id'
+const V_SPALTEN =
+  'id, kassentag_id, belegnr, zeit, zahlart, total_rappen, rabatt_prozent, rabatt_rappen, storniert_am, storno_id'
 const P_SPALTEN =
   'id, verkauf_id, produkt_id, name_snapshot, preis_snapshot_rappen, anzahl, gruppe_snapshot'
 const Z_SPALTEN =
@@ -85,6 +91,8 @@ export function zuVerkauf(z: Zeile): Verkauf {
     zeit: text(z, 'zeit'),
     zahlart,
     totalRappen: zahl(z, 'total_rappen'),
+    rabattProzent: zahl(z, 'rabatt_prozent'),
+    rabattRappen: zahl(z, 'rabatt_rappen'),
     storniertAm: textOderNull(z, 'storniert_am'),
     stornoId: textOderNull(z, 'storno_id')
   }
@@ -185,9 +193,18 @@ export function erstelleVerkaufRepo(
         const belegnr = einstellungRepo.naechsteBelegnummer()
         const zeit = isoLokal(k.uhr())
         db.prepare(
-          'INSERT INTO verkauf (id, kassentag_id, belegnr, zeit, zahlart, total_rappen, storniert_am, storno_id) ' +
-            'VALUES (?, ?, ?, ?, ?, ?, NULL, NULL)'
-        ).run(neu.id, neu.kassentagId, belegnr, zeit, neu.zahlart, neu.totalRappen)
+          'INSERT INTO verkauf (id, kassentag_id, belegnr, zeit, zahlart, total_rappen, rabatt_prozent, rabatt_rappen, storniert_am, storno_id) ' +
+            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)'
+        ).run(
+          neu.id,
+          neu.kassentagId,
+          belegnr,
+          zeit,
+          neu.zahlart,
+          neu.totalRappen,
+          neu.rabattProzent ?? 0,
+          neu.rabattRappen ?? 0
+        )
 
         const einfuegen = db.prepare(
           `INSERT INTO position (${P_SPALTEN}) VALUES (?, ?, ?, ?, ?, ?, ?)`

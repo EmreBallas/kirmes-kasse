@@ -1,6 +1,8 @@
 /**
  * Zahlungsberechnung nach Fachregeln 1 bis 8 (roadmap-v1.md Abschnitt 5).
  * Reine Funktion: keine Seiteneffekte, alle Beträge ganze Rappen/Cent.
+ * Ein Beleg-Rabatt braucht hier nichts: `totalRappen` ist bereits der rabattierte, zu kassierende Betrag
+ * (der Server rechnet ihn mit `rabattBetrag` aus), darum stimmen Deckung, Rückgeld und Spende unverändert.
  */
 import { chfZuEurCentAufgerundet, eurZuChfRappen, pruefeGanzzahl, pruefeKurs } from './geld'
 import type { ZahlungsEingabe, ZahlungsErgebnis, ZahlungsWarnung } from './types'

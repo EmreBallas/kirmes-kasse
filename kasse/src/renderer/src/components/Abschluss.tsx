@@ -9,6 +9,11 @@ import { api, fehlerMeldung } from '../api'
 import { AbschlussPdf } from './AbschlussPdf'
 import { Popup } from './Popup'
 
+/** Zahl aus dem Bericht; fehlt das Feld (aelterer Server), gilt 0. */
+function zahlOderNull(wert: number | undefined): number {
+  return typeof wert === 'number' && Number.isFinite(wert) ? wert : 0
+}
+
 /** Abzugszeile: bei 0 ohne Minuszeichen (sonst stuende dort «− 0.00»). */
 function formatAbzug(rappen: number, zeichen: string): string {
   return rappen === 0 ? formatChf(0) : `${zeichen}${formatChf(rappen)}`
@@ -225,6 +230,7 @@ export function Abschluss({ kassentag, onFertig, onZurueck }: Props): JSX.Elemen
               <Zeile label={`  davon separat erfasst (${String(bericht.spendenSeparatAnzahl)})`} wert={formatChf(bericht.spendenSeparatChfRappen)} />
               <Zeile label={`Storni (${String(bericht.storniAnzahl)})`} wert={formatAbzug(bericht.storniAuszahlungRappen, '− ')} />
               <Zeile label={`Helferessen (${String(bericht.helferessenStueck)} Stück, entgangen)`} wert={formatChf(bericht.helferessenEntgangenRappen)} />
+              <Zeile label={`Rabatte (${String(zahlOderNull(bericht.rabatteAnzahl))})`} wert={formatChf(zahlOderNull(bericht.rabatteRappen))} />
               <Zeile label="Nachdrucke" wert={String(bericht.nachdrucke)} />
               <Zeile label="Belege" wert={String(bericht.anzahlBelege)} />
               <Zeile label="Startgeld EUR" wert={`EUR ${formatEur(bericht.startgeldEurCent)}`} />

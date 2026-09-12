@@ -1,12 +1,15 @@
 /**
  * Warenkorb rechts: Zeilen mit Name, Anzahl, +/-, Loeschen, Betrag; Total gross; Zahlartenleiste.
+ * Ueber dem Total der Umschalter "{satz}% Rabatt" fuer den ganzen Beleg (Mitglieder anderer Vereine);
+ * ist er aktiv, stehen dort drei Zeilen: Zwischensumme, Rabatt als Abzug und Total CHF.
  * Darunter der dezente Knopf "Spende" (freie Spende ohne Kauf, unabhaengig vom Warenkorb).
  */
 import type { JSX } from 'react'
 import type { Warenkorb, Zahlart } from '@core/types'
 import { formatChf } from '@core/geld'
-import { anzahlArtikel, total } from '@core/warenkorb'
+import { anzahlArtikel } from '@core/warenkorb'
 import { ZAHLART_NAME } from '../bezahlen'
+import { RABATT_HELFER_HINWEIS, rabattKnopfText, rabattZeileLabel, warenkorbSumme, wirksamerSatz } from '../rabatt'
 
 interface Props {
   warenkorb: Warenkorb
@@ -15,6 +18,11 @@ interface Props {
   onEntfernen: (produktId: string) => void
   onLeeren: () => void
   onZahlart: (zahlart: Zahlart) => void
+  /** eingestellter Rabattsatz in Prozent (Einstellung rabatt_prozent, Standard 50) */
+  rabattSatz: number
+  /** Rabatt-Knopf gedrueckt: der ganze Beleg wird rabattiert */
+  rabattAktiv: boolean
+  onRabatt: (aktiv: boolean) => void
   /** Kassentag offen: Spende ohne Kauf moeglich */
   spendeMoeglich: boolean
   onSpende: () => void
@@ -22,8 +30,22 @@ interface Props {
 
 const ZAHLARTEN: Zahlart[] = ['bar_chf', 'bar_eur', 'twint', 'helfer']
 
-export function WarenkorbPanel({ warenkorb, eurMoeglich, onMenge, onEntfernen, onLeeren, onZahlart, spendeMoeglich, onSpende }: Props): JSX.Element {
+export function WarenkorbPanel({
+  warenkorb,
+  eurMoeglich,
+  onMenge,
+  onEntfernen,
+  onLeeren,
+  onZahlart,
+  rabattSatz,
+  rabattAktiv,
+  onRabatt,
+  spendeMoeglich,
+  onSpende
+}: Props): JSX.Element {
   const leer = warenkorb.zeilen.length === 0
+  // Rechnung kommt aus @core (summeMitRabatt -> rabattBetrag); der Renderer rechnet nie selbst.
+  const summe = warenkorbSumme(warenkorb, wirksamerSatz(rabattAktiv, rabattSatz, null))
   return (
     <aside className="warenkorb">
       <div className="warenkorb-kopf">
@@ -55,9 +77,37 @@ export function WarenkorbPanel({ warenkorb, eurMoeglich, onMenge, onEntfernen, o
         ))}
         {leer ? <li className="warenkorb-leer">Produkt antippen, um zu beginnen.</li> : null}
       </ul>
+      <div className="warenkorb-rabatt">
+        <button
+          type="button"
+          className={`knopf knopf-rabatt${rabattAktiv ? ' knopf-rabatt-aktiv' : ''}`}
+          disabled={leer}
+          aria-pressed={rabattAktiv}
+          onClick={() => onRabatt(!rabattAktiv)}
+          title="Rabatt für den ganzen Beleg (Mitglieder anderer Vereine)"
+        >
+          <span className="rabatt-haken" aria-hidden="true">
+            {rabattAktiv ? '✓' : ''}
+          </span>
+          {rabattKnopfText(rabattSatz)}
+        </button>
+        {rabattAktiv && !leer ? <span className="rabatt-hinweis">{RABATT_HELFER_HINWEIS}</span> : null}
+      </div>
+      {summe.rabattRappen > 0 ? (
+        <>
+          <div className="warenkorb-zwischensumme">
+            <span>Zwischensumme</span>
+            <span className="zahl">{formatChf(summe.zwischensummeRappen)}</span>
+          </div>
+          <div className="warenkorb-abzug">
+            <span>{rabattZeileLabel(summe.rabattProzent)}</span>
+            <span className="zahl">− {formatChf(summe.rabattRappen)}</span>
+          </div>
+        </>
+      ) : null}
       <div className="warenkorb-total">
         <span>Total CHF</span>
-        <span className="total-betrag zahl">{formatChf(total(warenkorb))}</span>
+        <span className="total-betrag zahl">{formatChf(summe.totalRappen)}</span>
       </div>
       <div className="zahlarten">
         {ZAHLARTEN.map((za) => (

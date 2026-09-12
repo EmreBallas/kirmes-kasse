@@ -8,6 +8,7 @@ import { leererWarenkorb } from '@core/warenkorb'
 import { api, type KassentagAktuellAntwort } from './api'
 import { bannerAusAntwort, bannerNachSpende, bannerNachStorno, type BannerZustand } from './bezahlen'
 import { useStatus, useWarenkorbSicherung } from './hooks'
+import { rabattAusEntwurf } from './rabatt'
 import { Abschluss } from './components/Abschluss'
 import { Einstellungen } from './components/Einstellungen'
 import { Kassenstart } from './components/Kassenstart'
@@ -25,6 +26,8 @@ function App(): JSX.Element {
   const [aktuell, setAktuell] = useState<KassentagAktuellAntwort | null>(null)
   const [einstellungen, setEinstellungen] = useState<EinstellungenTyp | null>(null)
   const [warenkorb, setWarenkorb] = useState<Warenkorb>(leererWarenkorb)
+  /** Rabatt-Knopf im Warenkorb (ganzer Beleg); ueberlebt dank Entwurf einen Neustart */
+  const [rabattAktiv, setRabattAktiv] = useState(false)
   const [entwurfGeladen, setEntwurfGeladen] = useState(false)
   const [banner, setBanner] = useState<BannerZustand | null>(null)
   const [abschlussTag, setAbschlussTag] = useState<Kassentag | null>(null)
@@ -33,7 +36,7 @@ function App(): JSX.Element {
   const [beendenAnfrage, setBeendenAnfrage] = useState(false)
   const { status, verbunden } = useStatus()
 
-  useWarenkorbSicherung(warenkorb, entwurfGeladen)
+  useWarenkorbSicherung(warenkorb, rabattAktiv, entwurfGeladen)
 
   /** Beenden ist nur im Electron-Fenster moeglich (Plan B im Browser hat keine Bruecke). */
   const beendenMoeglich = window.kasse !== undefined
@@ -86,7 +89,10 @@ function App(): JSX.Element {
     api
       .warenkorbEntwurf()
       .then((w) => {
-        if (Array.isArray(w.zeilen)) setWarenkorb(w)
+        if (!Array.isArray(w.zeilen)) return
+        setWarenkorb({ zeilen: w.zeilen })
+        // rabattAktiv fehlt bei alten Entwuerfen und alten Servern: dann kein Rabatt.
+        setRabattAktiv(rabattAusEntwurf(w))
       })
       .catch(() => {
         /* kein Entwurf */
@@ -235,6 +241,8 @@ function App(): JSX.Element {
           einstellungen={einstellungen}
           warenkorb={warenkorb}
           onWarenkorb={setWarenkorb}
+          rabattAktiv={rabattAktiv}
+          onRabatt={setRabattAktiv}
           banner={banner}
           onBanner={(antwort) => setBanner(bannerAusAntwort(antwort))}
           onSpendeErfasst={(spende) => setBanner((alt) => bannerNachSpende(alt, spende))}

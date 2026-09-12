@@ -1,6 +1,6 @@
 {
   "name": "kasse",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Lokale Kassensoftware fuer Vereinsfeste: Bar, Twint, Abholcoupons, Bondrucker",
   "main": "./out/main/index.js",
   "author": "kirmes-kasse",

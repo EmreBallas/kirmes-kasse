@@ -20,8 +20,8 @@ afterEach(() => {
 describe('migriere', () => {
   it('legt das Schema an und ist idempotent', () => {
     const d = db()
-    expect(migriere(d, MIGRATIONEN_ORDNER)).toBe(3)
-    expect(schemaVersion(d)).toBe(3)
+    expect(migriere(d, MIGRATIONEN_ORDNER)).toBe(4)
+    expect(schemaVersion(d)).toBe(4)
     expect(migriere(d, MIGRATIONEN_ORDNER)).toBe(0)
     const tabellen = d
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
@@ -62,9 +62,9 @@ describe('migriere', () => {
         "INSERT INTO kassentag (id, datum, kasse_praefix, kassier, startgeld_chf_rappen, geoeffnet_am) VALUES ('alt', '2026-09-19', 'K1', 'EB', 20000, '2026-09-19T10:00:00')"
       ).run()
 
-      expect(leseMigrationen(MIGRATIONEN_ORDNER).map((m) => m.version)).toEqual([1, 2, 3])
-      expect(migriere(d, MIGRATIONEN_ORDNER)).toBe(2)
-      expect(schemaVersion(d)).toBe(3)
+      expect(leseMigrationen(MIGRATIONEN_ORDNER).map((m) => m.version)).toEqual([1, 2, 3, 4])
+      expect(migriere(d, MIGRATIONEN_ORDNER)).toBe(3)
+      expect(schemaVersion(d)).toBe(4)
       const spalten = d
         .prepare('PRAGMA table_info(kassentag)')
         .all()
@@ -101,8 +101,8 @@ describe('migriere', () => {
         "INSERT INTO verkauf (id, kassentag_id, belegnr, zeit, zahlart, total_rappen) VALUES ('v', 'alt', 'K1-0001', '2026-09-19T10:05:00', 'bar_chf', 9800)"
       ).run()
 
-      expect(migriere(d, MIGRATIONEN_ORDNER)).toBe(1)
-      expect(schemaVersion(d)).toBe(3)
+      expect(migriere(d, MIGRATIONEN_ORDNER)).toBe(2)
+      expect(schemaVersion(d)).toBe(4)
       const spalten = d
         .prepare('PRAGMA table_info(spende)')
         .all()
@@ -156,6 +156,55 @@ describe('migriere', () => {
       ).toThrow()
     } finally {
       rmSync(bis002, { recursive: true, force: true })
+    }
+  })
+
+  it('Migration 004 läuft auf einer DB mit Stand 003 und ergänzt die Rabattspalten am Verkauf', () => {
+    // Ordner mit 001 bis 003: Stand einer Kasse vor dem Rabatt-Update
+    const bis003 = mkdtempSync(join(tmpdir(), 'kasse-mig-'))
+    try {
+      for (const datei of ['001_init.sql', '002_kassentag_pdf.sql', '003_spende.sql']) {
+        copyFileSync(join(MIGRATIONEN_ORDNER, datei), join(bis003, datei))
+      }
+      const d = db()
+      expect(migriere(d, bis003)).toBe(3)
+      expect(schemaVersion(d)).toBe(3)
+      const spaltenVorher = d
+        .prepare('PRAGMA table_info(verkauf)')
+        .all()
+        .map((z) => z['name'])
+      expect(spaltenVorher).not.toContain('rabatt_prozent')
+      // Bestehender Beleg mit altem Schema: muss die Migration überleben und "kein Rabatt" bedeuten
+      d.prepare(
+        "INSERT INTO kassentag (id, datum, kasse_praefix, kassier, startgeld_chf_rappen, geoeffnet_am) VALUES ('alt', '2026-09-19', 'K1', 'EB', 20000, '2026-09-19T10:00:00')"
+      ).run()
+      d.prepare(
+        "INSERT INTO verkauf (id, kassentag_id, belegnr, zeit, zahlart, total_rappen) VALUES ('v', 'alt', 'K1-0001', '2026-09-19T10:05:00', 'bar_chf', 9800)"
+      ).run()
+
+      expect(migriere(d, MIGRATIONEN_ORDNER)).toBe(1)
+      expect(schemaVersion(d)).toBe(4)
+      const spalten = d
+        .prepare('PRAGMA table_info(verkauf)')
+        .all()
+        .map((z) => z['name'])
+      expect(spalten).toContain('rabatt_prozent')
+      expect(spalten).toContain('rabatt_rappen')
+      expect(
+        d
+          .prepare("SELECT total_rappen, rabatt_prozent, rabatt_rappen FROM verkauf WHERE id = 'v'")
+          .get()
+      ).toEqual({ total_rappen: 9800, rabatt_prozent: 0, rabatt_rappen: 0 })
+
+      // Neue Belege tragen den Rabatt am Beleg (nicht an der Position)
+      d.prepare(
+        "INSERT INTO verkauf (id, kassentag_id, belegnr, zeit, zahlart, total_rappen, rabatt_prozent, rabatt_rappen) VALUES ('v2', 'alt', 'K1-0002', '2026-09-19T10:06:00', 'bar_chf', 1350, 50, 1350)"
+      ).run()
+      expect(
+        d.prepare("SELECT rabatt_prozent, rabatt_rappen FROM verkauf WHERE id = 'v2'").get()
+      ).toEqual({ rabatt_prozent: 50, rabatt_rappen: 1350 })
+    } finally {
+      rmSync(bis003, { recursive: true, force: true })
     }
   })
 

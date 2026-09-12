@@ -1,5 +1,5 @@
 /**
- * Electron-Main der Kasse WintiKirmes 2026.
+ * Electron-Main der Vereins-Kasse.
  *
  * Reihenfolge beim Start: Single-Instance-Sperre -> Datenordner -> SQLite (Migrationen, Seeds) -> Hono-App
  * -> HTTP-Server auf 127.0.0.1:<port> (Port-Bind vor allem, was Daten anfasst) -> Druck-Transport und

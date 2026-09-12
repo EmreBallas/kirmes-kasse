@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Produkt } from './types'
-import { anzahlArtikel, entfernen, hinzufuegen, leererWarenkorb, mengeAendern, sofortAusgeben, total } from './warenkorb'
+import { anzahlArtikel, entfernen, hinzufuegen, leererWarenkorb, mengeAendern, sofortAusgeben, summeMitRabatt, total } from './warenkorb'
 
 function produkt(id: string, name: string, preisRappen: number | null, gruppe: Produkt['gruppe'] = 'coupon'): Produkt {
   return { id, name, preisRappen, gruppe, aktiv: true, ausverkauft: false, reihenfolge: 0, erstelltAm: '2026-09-12T10:00:00' }
@@ -73,5 +73,25 @@ describe('warenkorb', () => {
   it('sofortAusgeben liefert nur Gruppe kasse', () => {
     const w = hinzufuegen(hinzufuegen(leererWarenkorb(), burger), dose, 2)
     expect(sofortAusgeben(w.zeilen)).toEqual([{ name: 'Getränk Dose', anzahl: 2 }])
+  })
+})
+
+describe('summeMitRabatt', () => {
+  const burger = produkt('burger', 'Winti Burger', 1100)
+  const dose = produkt('dose', 'Getränk Dose', 250, 'kasse')
+
+  it('50 Prozent auf den ganzen Warenkorb (Positionen behalten volle Preise)', () => {
+    const w = hinzufuegen(hinzufuegen(leererWarenkorb(), burger), dose, 2) // 16.00
+    expect(summeMitRabatt(w, 50)).toEqual({ zwischensummeRappen: 1600, rabattProzent: 50, rabattRappen: 800, totalRappen: 800 })
+    expect(w.zeilen.map((z) => z.preisRappen)).toEqual([1100, 250])
+  })
+
+  it('ohne Rabatt bleibt das Total die Zwischensumme', () => {
+    const w = hinzufuegen(leererWarenkorb(), burger)
+    expect(summeMitRabatt(w, 0)).toEqual({ zwischensummeRappen: 1100, rabattProzent: 0, rabattRappen: 0, totalRappen: 1100 })
+  })
+
+  it('leerer Warenkorb: alles 0, auch mit Satz', () => {
+    expect(summeMitRabatt(leererWarenkorb(), 50)).toEqual({ zwischensummeRappen: 0, rabattProzent: 0, rabattRappen: 0, totalRappen: 0 })
   })
 })

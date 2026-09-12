@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { StatusAntwort, Warenkorb } from '@core/types'
 import { api } from './api'
+import { entwurfMitRabatt } from './rabatt'
 
 /** Aktuelle Zeit, jede Sekunde neu. */
 export function useJetzt(intervallMs = 1000): Date {
@@ -59,8 +60,15 @@ export function useStatus(intervallMs = 2000): StatusZustand {
 /**
  * Sichert den Warenkorb-Entwurf 300 ms nach der letzten Aenderung (PUT), aber erst,
  * wenn der Entwurf beim Start geladen wurde (sonst wuerde ein leerer Korb den gesicherten ueberschreiben).
+ * Mitgesichert wird der Zustand des Rabatt-Knopfs (`rabattAktiv`), damit ein Neustart mitten im
+ * Bestellen den gewaehrten Rabatt nicht verliert.
  */
-export function useWarenkorbSicherung(warenkorb: Warenkorb, geladen: boolean, verzoegerungMs = 300): void {
+export function useWarenkorbSicherung(
+  warenkorb: Warenkorb,
+  rabattAktiv: boolean,
+  geladen: boolean,
+  verzoegerungMs = 300
+): void {
   const ersterLauf = useRef(true)
   useEffect(() => {
     if (!geladen) return
@@ -70,10 +78,10 @@ export function useWarenkorbSicherung(warenkorb: Warenkorb, geladen: boolean, ve
       return
     }
     const timer = window.setTimeout(() => {
-      api.warenkorbEntwurfSpeichern(warenkorb).catch(() => {
+      api.warenkorbEntwurfSpeichern(entwurfMitRabatt(warenkorb, rabattAktiv)).catch(() => {
         /* Entwurf ist nur Komfort; Fehler nicht blockierend */
       })
     }, verzoegerungMs)
     return () => window.clearTimeout(timer)
-  }, [warenkorb, geladen, verzoegerungMs])
+  }, [warenkorb, rabattAktiv, geladen, verzoegerungMs])
 }

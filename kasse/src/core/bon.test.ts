@@ -19,6 +19,8 @@ const VERKAUF: Verkauf = {
   zeit: '2026-09-19T14:32:05',
   zahlart: 'bar_chf',
   totalRappen: 4500,
+  rabattProzent: 0,
+  rabattRappen: 0,
   storniertAm: null,
   stornoId: null
 }
@@ -265,6 +267,8 @@ describe('bonModellAbschluss', () => {
     storniAuszahlungRappen: 1700,
     helferessenStueck: 5,
     helferessenEntgangenRappen: 5500,
+    rabatteAnzahl: 2,
+    rabatteRappen: 2700,
     nachdrucke: 1,
     sollChfRappen: 141550,
     sollEurCent: 4500,
@@ -303,6 +307,8 @@ describe('bonModellAbschluss', () => {
     expect(t.indexOf(labelWert('  davon separat erfasst (3)', '6.50'))).toBe(t.indexOf(labelWert('Spende Twint CHF', '3.00')) + 1)
     expect(t).toContain(labelWert('Storni (2)', '-17.00'))
     expect(t).toContain(labelWert('Helferessen 5 Stk', '55.00'))
+    expect(t).toContain(labelWert('Rabatte (2 Belege)', '27.00'))
+    expect(t.indexOf(labelWert('Rabatte (2 Belege)', '27.00'))).toBe(t.indexOf(labelWert('Helferessen 5 Stk', '55.00')) + 1)
     expect(t).toContain(labelWert('Nachdrucke', '1'))
     expect(t).toContain(labelWert('SOLL CHF', '1415.50'))
     expect(t).toContain(labelWert('IST CHF', '1415.00'))
@@ -343,5 +349,137 @@ describe('bonModellTest', () => {
     expect(m.dokumente).toHaveLength(1)
     expect(m.dokumente[0]?.zeilen[0]?.text).toBe('TESTDRUCK')
     pruefeBreiten(m)
+  })
+})
+
+describe('bonModellVerkauf – Beleg-Rabatt', () => {
+  // 27.00 Zwischensumme, 50% -> Total 13.50, Rabatt 13.50
+  const RABATT_POSITIONEN: Position[] = [pos('menue', 'Menü', 2700, 1)]
+  const V_RABATT: Verkauf = { ...VERKAUF, totalRappen: 1350, rabattProzent: 50, rabattRappen: 1350 }
+  const Z_RABATT: Zahlung = { ...ZAHLUNG_BAR, gegeben: 2000, gegebenChfRappen: 2000, rueckgeldChfRappen: 650 }
+
+  it('zeigt Zwischensumme, Rabatt als Abzug und danach das rabattierte TOTAL', () => {
+    const m = bonModellVerkauf(V_RABATT, RABATT_POSITIONEN, Z_RABATT, { nachdruck: null })
+    pruefeBreiten(m)
+    const t = texte(letztes(m))
+    expect(t).toEqual([
+      positionsZeile(1, 'Menü', '27.00'),
+      '-'.repeat(48),
+      labelWert('Zwischensumme', '27.00'),
+      labelWert('Rabatt 50%', '-13.50'),
+      labelWert('TOTAL CHF', '13.50'),
+      labelWert('Gegeben CHF', '20.00'),
+      'RÜCKGELD CHF        6.50',
+      '',
+      'K1-0042  14:32'
+    ])
+    // Position behält den vollen Preis, der Rabatt steht am Beleg
+    expect(t[0]).toBe(positionsZeile(1, 'Menü', '27.00'))
+    const total = letztes(m).zeilen[4]
+    expect(total).toEqual({ text: labelWert('TOTAL CHF', '13.50'), fett: true })
+  })
+
+  it('nennt den eingestellten Satz im Rabatt-Label', () => {
+    const v: Verkauf = { ...VERKAUF, totalRappen: 800, rabattProzent: 20, rabattRappen: 200 }
+    const t = texte(letztes(bonModellVerkauf(v, [pos('menue', 'Menü', 1000, 1)], { ...ZAHLUNG_BAR, gegeben: 1000, gegebenChfRappen: 1000, rueckgeldChfRappen: 200 }, { nachdruck: null })))
+    expect(t).toContain(labelWert('Zwischensumme', '10.00'))
+    expect(t).toContain(labelWert('Rabatt 20%', '-2.00'))
+    expect(t).toContain(labelWert('TOTAL CHF', '8.00'))
+  })
+
+  it('ohne Rabatt bleibt der Bon exakt wie bisher', () => {
+    const ohne = texte(letztes(bonModellVerkauf(VERKAUF, POSITIONEN, ZAHLUNG_BAR, { nachdruck: null })))
+    expect(ohne.some((x) => x.startsWith('Zwischensumme') || x.startsWith('Rabatt'))).toBe(false)
+    expect(ohne[4]).toBe('-'.repeat(48))
+    expect(ohne[5]).toBe(labelWert('TOTAL CHF', '45.00'))
+  })
+
+  it('Coupons bleiben unverändert', () => {
+    const m = bonModellVerkauf(V_RABATT, RABATT_POSITIONEN, Z_RABATT, { nachdruck: null })
+    expect(m.dokumente).toHaveLength(2)
+    expect(texte(m.dokumente[0] ?? { zeilen: [] })).toEqual(['1x', 'Menü', '', 'Sa 19.09.2026  14:32', 'K1-0042   Coupon 1/1'])
+  })
+})
+
+describe('bonModellAbschluss – Rabatte und Veranstaltung', () => {
+  const BASIS: AbschlussBericht = {
+    kassentagId: 'tag-sa',
+    datum: '2026-09-19',
+    kassier: 'MK',
+    kassePraefix: 'K1',
+    startgeldChfRappen: 20000,
+    startgeldEurCent: 0,
+    barEinnahmenChfRappen: 1350,
+    barSpendeChfRappen: 0,
+    barEinnahmenEurCent: 0,
+    barEinnahmenEurChfRappen: 0,
+    rueckgeldAusEurRappen: 0,
+    barSpendeEurChfRappen: 0,
+    twintUmsatzRappen: 0,
+    twintStorniertRappen: 0,
+    twintSpendeRappen: 0,
+    spendenSeparatAnzahl: 0,
+    spendenSeparatChfRappen: 0,
+    storniAnzahl: 0,
+    storniAuszahlungRappen: 0,
+    helferessenStueck: 0,
+    helferessenEntgangenRappen: 0,
+    rabatteAnzahl: 1,
+    rabatteRappen: 1350,
+    nachdrucke: 0,
+    sollChfRappen: 21350,
+    sollEurCent: 0,
+    istChfRappen: null,
+    istEurCent: null,
+    differenzChfRappen: null,
+    differenzEurCent: null,
+    anzahlBelege: 1,
+    produkte: [{ produktId: 'menue', name: 'Menü', verkauft: 1, helfer: 0, umsatzRappen: 2700 }],
+    erstelltAm: ''
+  }
+
+  it('Rabattzeile direkt nach der Helferessen-Zeile', () => {
+    const t = texte(letztes(bonModellAbschluss(BASIS)))
+    const i = t.indexOf(labelWert('Helferessen 0 Stk', '0.00'))
+    expect(i).toBeGreaterThan(-1)
+    expect(t[i + 1]).toBe(labelWert('Rabatte (1 Belege)', '13.50'))
+    // Umsatz je Produkt bleibt brutto; die Rabattzeile erklärt die Differenz zu den Einnahmen
+    expect(t).toContain(labelWert('Umsatz Produkte CHF', '27.00'))
+    expect(t).toContain(labelWert('SOLL CHF', '213.50'))
+  })
+
+  it('Veranstaltung steht zentriert und doppelt gross über KASSENABSCHLUSS', () => {
+    const m = bonModellAbschluss({ ...BASIS, veranstaltung: 'Dorffest Musterhausen' })
+    pruefeBreiten(m)
+    const z = letztes(m).zeilen
+    expect(z[0]).toEqual({ text: 'Dorffest Musterhausen', groesse: 'doppelt', ausrichtung: 'mitte', fett: true })
+    expect(z[1]?.text).toBe('KASSENABSCHLUSS')
+  })
+
+  it('Veranstaltung beim Nachdruck nach der NACHDRUCK-Zeile', () => {
+    const z = letztes(bonModellAbschluss({ ...BASIS, veranstaltung: 'Dorffest' }, { nachdruck: true })).zeilen
+    expect(z[0]?.text).toBe('NACHDRUCK')
+    expect(z[1]?.text).toBe('Dorffest')
+    expect(z[2]?.text).toBe('KASSENABSCHLUSS')
+  })
+
+  it('ohne oder mit leerer Veranstaltung beginnt der Bon wie bisher', () => {
+    expect(texte(letztes(bonModellAbschluss(BASIS)))[0]).toBe('KASSENABSCHLUSS')
+    expect(texte(letztes(bonModellAbschluss({ ...BASIS, veranstaltung: '' })))[0]).toBe('KASSENABSCHLUSS')
+    expect(texte(letztes(bonModellAbschluss({ ...BASIS, veranstaltung: '   ' })))[0]).toBe('KASSENABSCHLUSS')
+  })
+
+  it('langer Veranstaltungsname wird auf die Spaltenbreite gekürzt', () => {
+    const m = bonModellAbschluss({ ...BASIS, veranstaltung: 'Ein sehr langer Name eines Vereinsfestes 2026' })
+    pruefeBreiten(m)
+    expect(letztes(m).zeilen[0]?.text).toHaveLength(SPALTEN.doppelt)
+  })
+})
+
+describe('bonModellTest – ohne festen Projektnamen', () => {
+  it('nennt nur eine neutrale Bezeichnung, keinen festen Veranstaltungsnamen', () => {
+    const t = bonModellTest().dokumente[0]?.zeilen.map((z) => z.text) ?? []
+    expect(t[0]).toBe('TESTDRUCK')
+    expect(t[1]).toBe('Vereins-Kasse')
   })
 })
