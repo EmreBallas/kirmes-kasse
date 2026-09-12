@@ -109,6 +109,34 @@ export interface Storno {
   mitPin: boolean
 }
 
+/**
+ * Separat erfasste Spende (nachträglich, ohne Bon): "Rückgeld als Spende" zu einem bereits
+ * abgeschlossenen Bar-Beleg (verkaufId gesetzt, betrag = dessen Rückgeld) oder freie Spende ohne Kauf.
+ * Das Geld bleibt in der Lade und erhöht den Soll-Bestand. Storno nur per storniertAm, nichts wird gelöscht.
+ */
+export interface Spende {
+  id: string
+  kassentagId: string
+  verkaufId: string | null
+  zeit: string
+  typ: SpendeTyp
+  /** Rappen bei bar_chf/twint, Cent bei bar_eur */
+  betrag: number
+  kursX10000: number | null // nur bei bar_eur
+  /** CHF-Gegenwert, bei EUR auf 5 Rappen abgerundet */
+  betragChfRappen: number
+  storniertAm: string | null
+}
+
+export interface SpendeAnfrage {
+  id: string // UUID vom Client (Idempotenz)
+  typ: SpendeTyp
+  /** Rappen bei bar_chf/twint, Cent bei bar_eur */
+  betrag: number
+  /** Beleg, dessen Rückgeld gespendet wird; null bei freier Spende */
+  verkaufId: string | null
+}
+
 export interface Druckauftrag {
   id: string
   verkaufId: string | null
@@ -215,6 +243,10 @@ export interface AbschlussBericht {
   twintUmsatzRappen: number // brutto
   twintStorniertRappen: number // davon am heutigen Tag storniert
   twintSpendeRappen: number
+  /** Anzahl nicht stornierter separat erfasster Spenden des Tages (informativ) */
+  spendenSeparatAnzahl: number
+  /** Σ CHF-Gegenwert aller nicht stornierten separaten Spenden (bereits in den Spende-Zeilen enthalten) */
+  spendenSeparatChfRappen: number
   storniAnzahl: number
   storniAuszahlungRappen: number
   helferessenStueck: number

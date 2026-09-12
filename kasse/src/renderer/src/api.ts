@@ -16,6 +16,8 @@ import type {
   NachdruckAnfrage,
   Position,
   Produkt,
+  Spende,
+  SpendeAnfrage,
   StatusAntwort,
   Storno,
   StornoAnfrage,
@@ -110,7 +112,18 @@ export interface LetzterVerkauf {
   zahlung: Zahlung
   positionen: Position[]
   storno: Storno | null
+  /** separat erfasste "Rueckgeld als Spende" zu diesem Beleg; fehlt bei alten Servern */
+  spende?: Spende | null
 }
+
+/** Antwort von POST /api/spende: die gespeicherte Spende; bereitsVorhanden = gleiche UUID schon gespeichert. */
+export interface SpendeAntwort {
+  spende: Spende
+  bereitsVorhanden: boolean
+}
+
+/** Zeile von GET /api/spende/letzte: Spende mit Belegnummer des verknuepften Verkaufs (null bei freier Spende). */
+export type LetzteSpende = Spende & { belegnr: string | null }
 
 export interface EinstellungenAenderung extends Partial<Einstellungen> {
   neuePin?: string
@@ -238,6 +251,10 @@ export function erstelleApi(
       )
     },
 
+    spendeErfassen: (daten) => anfrage<SpendeAntwort>('POST', '/api/spende', daten),
+    spendenLetzte: (limit = 20) => anfrage<LetzteSpende[]>('GET', `/api/spende/letzte?limit=${String(limit)}`),
+    spendeStorno: (id, pin) => anfrage<Spende>('POST', `/api/spende/${encodeURIComponent(id)}/storno`, {}, pin),
+
     druckauftrag: (id) =>
       anfrage<Druckauftrag>('GET', `/api/druck/${encodeURIComponent(id)}`, undefined, undefined, zeitlimits.status),
     testdruck: () => anfrage<{ druckauftragId: string }>('POST', '/api/druck/test', {}),
@@ -277,6 +294,15 @@ export interface KasseApi {
   letzteVerkaeufe(limit?: number): Promise<LetzterVerkauf[]>
   storno(verkaufId: string, grund: StornoGrund, pin?: string): Promise<Storno>
   nachdruck(verkaufId: string, was: NachdruckAnfrage['was']): Promise<{ druckauftragId: string }>
+  /**
+   * Separate Spende erfassen (Rueckgeld als Spende zu einem Beleg oder freie Spende, ohne Bon).
+   * 409 kein_kassentag / bereits_gespendet / verkauf_storniert, 400 ungueltige_eingabe.
+   */
+  spendeErfassen(daten: SpendeAnfrage): Promise<SpendeAntwort>
+  /** Letzte Spenden, neueste zuerst, inkl. stornierte */
+  spendenLetzte(limit?: number): Promise<LetzteSpende[]>
+  /** Spende stornieren: ohne PIN nur die zuletzt erfasste, sonst 403 pin_falsch (dann mit PIN wiederholen); 409 wenn schon storniert */
+  spendeStorno(id: string, pin?: string): Promise<Spende>
   /** Zustand eines Druckauftrags (Banner verfolgt den eigenen Beleg) */
   druckauftrag(id: string): Promise<Druckauftrag>
   testdruck(): Promise<{ druckauftragId: string }>

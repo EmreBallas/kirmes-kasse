@@ -1,5 +1,6 @@
 /**
  * Warenkorb rechts: Zeilen mit Name, Anzahl, +/-, Loeschen, Betrag; Total gross; Zahlartenleiste.
+ * Darunter der dezente Knopf "Spende" (freie Spende ohne Kauf, unabhaengig vom Warenkorb).
  */
 import type { JSX } from 'react'
 import type { Warenkorb, Zahlart } from '@core/types'
@@ -14,11 +15,14 @@ interface Props {
   onEntfernen: (produktId: string) => void
   onLeeren: () => void
   onZahlart: (zahlart: Zahlart) => void
+  /** Kassentag offen: Spende ohne Kauf moeglich */
+  spendeMoeglich: boolean
+  onSpende: () => void
 }
 
 const ZAHLARTEN: Zahlart[] = ['bar_chf', 'bar_eur', 'twint', 'helfer']
 
-export function WarenkorbPanel({ warenkorb, eurMoeglich, onMenge, onEntfernen, onLeeren, onZahlart }: Props): JSX.Element {
+export function WarenkorbPanel({ warenkorb, eurMoeglich, onMenge, onEntfernen, onLeeren, onZahlart, spendeMoeglich, onSpende }: Props): JSX.Element {
   const leer = warenkorb.zeilen.length === 0
   return (
     <aside className="warenkorb">
@@ -68,6 +72,15 @@ export function WarenkorbPanel({ warenkorb, eurMoeglich, onMenge, onEntfernen, o
             {ZAHLART_NAME[za]}
           </button>
         ))}
+        <button
+          type="button"
+          className="knopf knopf-neutral knopf-spende"
+          disabled={!spendeMoeglich}
+          onClick={onSpende}
+          title={spendeMoeglich ? 'Spende ohne Kauf erfassen (kein Bon)' : 'Kein Kassentag offen'}
+        >
+          Spende
+        </button>
       </div>
     </aside>
   )

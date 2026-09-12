@@ -216,4 +216,65 @@ describe('api-Client', () => {
       expect(fehlerMeldung(e)).toBe('Nur in der Kassen-App möglich.')
     }
   })
+
+  it('spendeErfassen(): POST /api/spende mit SpendeAnfrage als JSON-Body, ohne PIN', async () => {
+    const aufrufe: Aufruf[] = []
+    const spende = { id: 'sp1', kassentagId: 'k1', verkaufId: 'v1', zeit: '2026-09-19T14:32:05', typ: 'bar_chf', betrag: 200, kursX10000: null, betragChfRappen: 200, storniertAm: null }
+    const api = erstelleApi(fakeFetch(201, { spende, bereitsVorhanden: false }, aufrufe), '')
+    const antwort = await api.spendeErfassen({ id: 'sp1', typ: 'bar_chf', betrag: 200, verkaufId: 'v1' })
+    expect(antwort.spende.betragChfRappen).toBe(200)
+    expect(antwort.bereitsVorhanden).toBe(false)
+    expect(aufrufe[0]?.url).toBe('/api/spende')
+    expect(aufrufe[0]?.init.method).toBe('POST')
+    expect(aufrufe[0]?.init.body).toBe(JSON.stringify({ id: 'sp1', typ: 'bar_chf', betrag: 200, verkaufId: 'v1' }))
+    const headers = aufrufe[0]?.init.headers as Record<string, string>
+    expect(headers[PIN_HEADER]).toBeUndefined()
+    expect(headers['Content-Type']).toBe('application/json')
+  })
+
+  it('spendeErfassen(): 409 bereits_gespendet wird als ApiFehler mit diesem Code geworfen', async () => {
+    const api = erstelleApi(fakeFetch(409, { fehler: 'bereits_gespendet', meldung: 'Für diesen Beleg wurde bereits eine Spende erfasst.' }, []), '')
+    try {
+      await api.spendeErfassen({ id: 'sp1', typ: 'bar_chf', betrag: 200, verkaufId: 'v1' })
+      expect.unreachable()
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApiFehler)
+      expect((e as ApiFehler).status).toBe(409)
+      expect((e as ApiFehler).fehler).toBe('bereits_gespendet')
+    }
+  })
+
+  it('spendenLetzte(): GET /api/spende/letzte?limit=n liefert Spenden mit belegnr', async () => {
+    const aufrufe: Aufruf[] = []
+    const api = erstelleApi(fakeFetch(200, [{ id: 'sp1', belegnr: 'K1-0004', typ: 'bar_chf', betrag: 200, storniertAm: null }], aufrufe), '')
+    const liste = await api.spendenLetzte(5)
+    expect(liste[0]?.belegnr).toBe('K1-0004')
+    expect(aufrufe[0]?.url).toBe('/api/spende/letzte?limit=5')
+    expect(aufrufe[0]?.init.method).toBe('GET')
+    await api.spendenLetzte()
+    expect(aufrufe[1]?.url).toBe('/api/spende/letzte?limit=20')
+  })
+
+  it('spendeStorno(): ohne PIN kein X-Pin-Header, mit PIN Header gesetzt; 403 pin_falsch als ApiFehler', async () => {
+    const aufrufe: Aufruf[] = []
+    const api = erstelleApi(fakeFetch(200, { id: 'sp 1', storniertAm: '2026-09-19T14:40:00' }, aufrufe), '')
+    const ohne = await api.spendeStorno('sp 1')
+    expect(ohne.storniertAm).toBe('2026-09-19T14:40:00')
+    expect(aufrufe[0]?.url).toBe('/api/spende/sp%201/storno')
+    expect(aufrufe[0]?.init.method).toBe('POST')
+    expect((aufrufe[0]?.init.headers as Record<string, string>)[PIN_HEADER]).toBeUndefined()
+
+    await api.spendeStorno('sp1', '1234')
+    expect((aufrufe[1]?.init.headers as Record<string, string>)[PIN_HEADER]).toBe('1234')
+
+    const verweigert = erstelleApi(fakeFetch(403, { fehler: 'pin_falsch', meldung: 'PIN falsch' }, []), '')
+    try {
+      await verweigert.spendeStorno('sp2')
+      expect.unreachable()
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApiFehler)
+      expect((e as ApiFehler).status).toBe(403)
+      expect((e as ApiFehler).fehler).toBe('pin_falsch')
+    }
+  })
 })

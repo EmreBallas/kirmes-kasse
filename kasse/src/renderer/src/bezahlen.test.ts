@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { berechneZahlung } from '@core/zahlung'
-import type { Position, Storno, VerkaufAntwort, Warenkorb } from '@core/types'
+import type { Position, Spende, Storno, VerkaufAntwort, Warenkorb } from '@core/types'
 import {
   DRUCK_WARTEZEIT_MS,
   bannerAusAntwort,
   bannerDruckProblem,
+  bannerNachSpende,
   bannerNachStorno,
   baueVerkaufAnfrage,
   bestaetigungsWarnung,
@@ -125,12 +126,23 @@ describe('Banner nach Storno', () => {
 
   it('bannerAusAntwort: frische Antwort ohne Storno, null bleibt null', () => {
     expect(bannerAusAntwort(null)).toBeNull()
-    expect(bannerAusAntwort(antwort)).toEqual({ antwort, storno: null })
+    expect(bannerAusAntwort(antwort)).toEqual({ antwort, storno: null, spende: null })
   })
 
   it('Storno des Banner-Belegs wird gemerkt', () => {
     const banner = bannerAusAntwort(antwort)
-    expect(bannerNachStorno(banner, storno)).toEqual({ antwort, storno })
+    expect(bannerNachStorno(banner, storno)).toEqual({ antwort, storno, spende: null })
+  })
+
+  it('Rueckgeld als Spende zum Banner-Beleg wird gemerkt, zu einem anderen Beleg nicht; Storno der Spende ueberschreibt', () => {
+    const spende: Spende = { id: 'sp1', kassentagId: 'k1', verkaufId: 'v4', zeit: '2026-09-19T14:35:00', typ: 'bar_chf', betrag: 250, kursX10000: null, betragChfRappen: 250, storniertAm: null }
+    const banner = bannerAusAntwort(antwort)
+    expect(bannerNachSpende(banner, spende)).toEqual({ antwort, storno: null, spende })
+    expect(bannerNachSpende(banner, { ...spende, verkaufId: 'v3' })).toBe(banner)
+    expect(bannerNachSpende(banner, { ...spende, verkaufId: null })).toBe(banner)
+    expect(bannerNachSpende(null, spende)).toBeNull()
+    const storniert = { ...spende, storniertAm: '2026-09-19T14:36:00' }
+    expect(bannerNachSpende(bannerNachSpende(banner, spende), storniert)).toEqual({ antwort, storno: null, spende: storniert })
   })
 
   it('Storno eines anderen Belegs laesst das Banner unveraendert; ohne Banner bleibt es null', () => {

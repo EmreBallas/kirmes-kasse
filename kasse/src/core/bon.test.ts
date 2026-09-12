@@ -259,6 +259,8 @@ describe('bonModellAbschluss', () => {
     twintUmsatzRappen: 45600,
     twintStorniertRappen: 1200,
     twintSpendeRappen: 300,
+    spendenSeparatAnzahl: 3,
+    spendenSeparatChfRappen: 650,
     storniAnzahl: 2,
     storniAuszahlungRappen: 1700,
     helferessenStueck: 5,
@@ -297,6 +299,8 @@ describe('bonModellAbschluss', () => {
     expect(t).toContain(labelWert('Spende Bar CHF', '3.50'))
     expect(t).toContain(labelWert('Spende Bar EUR (CHF)', '1.50'))
     expect(t).toContain(labelWert('Spende Twint CHF', '3.00'))
+    expect(t).toContain(labelWert('  davon separat erfasst (3)', '6.50'))
+    expect(t.indexOf(labelWert('  davon separat erfasst (3)', '6.50'))).toBe(t.indexOf(labelWert('Spende Twint CHF', '3.00')) + 1)
     expect(t).toContain(labelWert('Storni (2)', '-17.00'))
     expect(t).toContain(labelWert('Helferessen 5 Stk', '55.00'))
     expect(t).toContain(labelWert('Nachdrucke', '1'))

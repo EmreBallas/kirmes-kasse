@@ -666,6 +666,37 @@ textarea.eingabe {
 .zahlart-helfer {
   background: var(--neutral);
 }
+/* Fuenfter, dezenter Knopf unter den Zahlarten: freie Spende ohne Kauf (kein Bon) */
+.knopf-spende {
+  grid-column: 1 / -1;
+  min-height: 44px;
+  font-size: 16px;
+  font-weight: 600;
+  background: var(--flaeche);
+  border: 2px dashed var(--rand);
+  color: var(--text-schwach);
+}
+
+/* Spendedialog: Umschalter Bar CHF / Twint / Bar EUR ueber der Betragszeile */
+.spende-typen {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.spende-typ-aktiv {
+  background: var(--primaer);
+  border-color: var(--primaer);
+  color: var(--primaer-text);
+}
+.spendedialog .bz-zeile-rueckgeld .bz-rueckgeld {
+  font-size: 64px;
+}
+.spende-hinweis {
+  font-size: 18px;
+  color: var(--text-schwach);
+  padding: 0 8px;
+}
 
 /* Banner nach dem Bezahlen */
 .banner {
@@ -726,6 +757,29 @@ textarea.eingabe {
 .banner-druck-ok {
   color: var(--gruen);
   font-size: 16px;
+}
+/* Rechte Spalte des Banners: Schliessen-Knopf, darunter "Rueckgeld als Spende" */
+.banner-aktionen {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+.knopf-rueckgeld-spende {
+  background: var(--flaeche);
+  border-color: var(--gruen);
+  color: var(--gruen);
+}
+.banner-spende-erfasst {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--gruen);
+  margin-top: 2px;
+}
+/* Banner nach einer freien Spende (ohne Kauf): gruen wie nach dem Bezahlen, aber ohne Rueckgeld */
+.banner-spende-frei .banner-rueckgeld {
+  color: var(--gruen);
 }
 
 /* Kassenstart: Nachdruck des letzten Abschluss-Bons */
@@ -1049,6 +1103,21 @@ textarea.eingabe {
 .marke-kasse {
   background: var(--kasse);
   color: var(--kasse-dunkel);
+}
+.marke-spende {
+  background: var(--gruen-hell);
+  color: var(--gruen);
+  white-space: nowrap;
+}
+.tabelle .spalte-spende {
+  white-space: nowrap;
+}
+/* Abschnitt "Letzte Spenden" unter der Verkaufsliste */
+.spenden-titel {
+  margin: 20px 0 8px 0;
+}
+.tabelle-spenden {
+  max-width: 900px;
 }
 
 /* ---------------------------------------------------------------- Abschluss */

@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState, type JSX } from 'react'
 import type { Einstellungen as EinstellungenTyp, Kassentag, Warenkorb } from '@core/types'
 import { leererWarenkorb } from '@core/warenkorb'
 import { api, type KassentagAktuellAntwort } from './api'
-import { bannerAusAntwort, bannerNachStorno, type BannerZustand } from './bezahlen'
+import { bannerAusAntwort, bannerNachSpende, bannerNachStorno, type BannerZustand } from './bezahlen'
 import { useStatus, useWarenkorbSicherung } from './hooks'
 import { Abschluss } from './components/Abschluss'
 import { Einstellungen } from './components/Einstellungen'
@@ -182,6 +182,7 @@ function App(): JSX.Element {
         <LetzteVerkaeufe
           onZurueck={zumVerkauf}
           onStorniert={(storno) => setBanner((alt) => bannerNachStorno(alt, storno))}
+          onSpendeGeaendert={(spende) => setBanner((alt) => bannerNachSpende(alt, spende))}
         />
       )
 
@@ -236,6 +237,7 @@ function App(): JSX.Element {
           onWarenkorb={setWarenkorb}
           banner={banner}
           onBanner={(antwort) => setBanner(bannerAusAntwort(antwort))}
+          onSpendeErfasst={(spende) => setBanner((alt) => bannerNachSpende(alt, spende))}
           onBeenden={beendenMoeglich ? beendenAnfragen : undefined}
           onLetzte={() => setAnsicht('letzte')}
           onAbschluss={() => {

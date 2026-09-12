@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { berechneAbschluss, type AbschlussInput } from './abschluss'
-import type { Kassentag, Position, Storno, Verkauf, Zahlart, Zahlung } from './types'
+import type { Kassentag, Position, Spende, SpendeTyp, Storno, Verkauf, Zahlart, Zahlung } from './types'
+import { eurZuChfRappen } from './geld'
 import { berechneZahlung } from './zahlung'
 
 const SAMSTAG: Kassentag = {
@@ -94,6 +95,28 @@ function storno(v: Verkauf, tag: Kassentag, auszahlung: number = v.totalRappen):
   }
 }
 
+/** Separat erfasste Spende wie der Server sie anlegt (CHF-Gegenwert bei EUR auf 5 Rappen abgerundet). */
+function spende(
+  id: string,
+  tag: Kassentag,
+  typ: SpendeTyp,
+  betrag: number,
+  opts: { verkaufId?: string; kurs?: number; storniert?: boolean } = {}
+): Spende {
+  const kurs = typ === 'bar_eur' ? (opts.kurs ?? 9000) : null
+  return {
+    id,
+    kassentagId: tag.id,
+    verkaufId: opts.verkaufId ?? null,
+    zeit: `${tag.datum}T12:05:00`,
+    typ,
+    betrag,
+    kursX10000: kurs,
+    betragChfRappen: kurs === null ? betrag : eurZuChfRappen(betrag, kurs),
+    storniertAm: opts.storniert === true ? `${tag.datum}T12:06:00` : null
+  }
+}
+
 function input(tag: Kassentag, vs: ReturnType<typeof verkauf>[], storni: Storno[] = [], rest: Partial<AbschlussInput> = {}): AbschlussInput {
   return {
     kassentag: tag,
@@ -101,6 +124,7 @@ function input(tag: Kassentag, vs: ReturnType<typeof verkauf>[], storni: Storno[
     positionen: vs.flatMap((v) => v.positionen),
     zahlungen: vs.map((v) => v.zahlung),
     storni,
+    spenden: [],
     nachdrucke: 0,
     istChfRappen: null,
     istEurCent: null,
@@ -208,6 +232,93 @@ describe('berechneAbschluss – Kontrollfälle Roadmap Abschnitt 4', () => {
   })
 })
 
+describe('berechneAbschluss – separate Spenden (nachträglich erfasst)', () => {
+  it('Rückgeld als Spende: Verkauf 98.00 bar, 100 gegeben, danach Spende 2.00 -> Soll = Start + 98 + 2', () => {
+    const v = verkauf('s1', SAMSTAG, 'bar_chf', [{ produktId: 'menu', name: 'Menü', preis: 9800, anzahl: 1 }], 10000)
+    expect(v.zahlung.rueckgeldChfRappen).toBe(200)
+    const sp = spende('sp1', SAMSTAG, 'bar_chf', 200, { verkaufId: 's1' })
+    const b = berechneAbschluss(input(SAMSTAG, [v], [], { spenden: [sp] }))
+    expect(b.barEinnahmenChfRappen).toBe(9800)
+    expect(b.barSpendeChfRappen).toBe(200)
+    expect(b.sollChfRappen).toBe(20000 + 9800 + 200)
+    expect(b.sollEurCent).toBe(0)
+    expect(b.spendenSeparatAnzahl).toBe(1)
+    expect(b.spendenSeparatChfRappen).toBe(200)
+    expect(b.anzahlBelege).toBe(1) // Spende ist kein Beleg
+  })
+
+  it('freie Twint-Spende 5.00 -> Twint-Spende 5.00, Soll CHF unverändert', () => {
+    const sp = spende('sp2', SAMSTAG, 'twint', 500)
+    const b = berechneAbschluss(input(SAMSTAG, [], [], { spenden: [sp] }))
+    expect(b.twintSpendeRappen).toBe(500)
+    expect(b.twintUmsatzRappen).toBe(0)
+    expect(b.barSpendeChfRappen).toBe(0)
+    expect(b.sollChfRappen).toBe(20000)
+    expect(b.sollEurCent).toBe(0)
+    expect(b.spendenSeparatAnzahl).toBe(1)
+    expect(b.spendenSeparatChfRappen).toBe(500)
+  })
+
+  it('EUR-Spende 5 EUR bei Kurs 0.90 -> 4.50 CHF, Soll EUR + 5.00, Stück EUR aus Verkäufen unverändert', () => {
+    const sp = spende('sp3', SAMSTAG, 'bar_eur', 500)
+    expect(sp.betragChfRappen).toBe(450)
+    const b = berechneAbschluss(input(SAMSTAG, [], [], { spenden: [sp] }))
+    expect(b.barSpendeEurChfRappen).toBe(450)
+    expect(b.barEinnahmenEurCent).toBe(0) // nur Verkäufe
+    expect(b.barEinnahmenEurChfRappen).toBe(0)
+    expect(b.sollEurCent).toBe(500)
+    expect(b.sollChfRappen).toBe(20000) // EUR-Spende bleibt im EUR-Fach
+    expect(b.spendenSeparatChfRappen).toBe(450)
+  })
+
+  it('EUR-Spende mit krummem Gegenwert wird auf 5 Rappen abgerundet (1.23 EUR -> 1.10 CHF)', () => {
+    const sp = spende('sp3b', SAMSTAG, 'bar_eur', 123)
+    expect(sp.betragChfRappen).toBe(110)
+    const b = berechneAbschluss(input(SAMSTAG, [], [], { spenden: [sp] }))
+    expect(b.barSpendeEurChfRappen).toBe(110)
+    expect(b.sollEurCent).toBe(123)
+  })
+
+  it('stornierte Spende zählt nirgends', () => {
+    const aktiv = spende('sp4', SAMSTAG, 'bar_chf', 300)
+    const storniert = spende('sp5', SAMSTAG, 'bar_chf', 1000, { storniert: true })
+    const storniertTwint = spende('sp6', SAMSTAG, 'twint', 700, { storniert: true })
+    const storniertEur = spende('sp7', SAMSTAG, 'bar_eur', 500, { storniert: true })
+    const b = berechneAbschluss(input(SAMSTAG, [], [], { spenden: [aktiv, storniert, storniertTwint, storniertEur] }))
+    expect(b.barSpendeChfRappen).toBe(300)
+    expect(b.twintSpendeRappen).toBe(0)
+    expect(b.barSpendeEurChfRappen).toBe(0)
+    expect(b.sollChfRappen).toBe(20300)
+    expect(b.sollEurCent).toBe(0)
+    expect(b.spendenSeparatAnzahl).toBe(1)
+    expect(b.spendenSeparatChfRappen).toBe(300)
+  })
+
+  it('Spenden anderer Kassentage werden ignoriert', () => {
+    const fremd = spende('sp8', SONNTAG, 'bar_chf', 900)
+    const b = berechneAbschluss(input(SAMSTAG, [], [], { spenden: [fremd] }))
+    expect(b.barSpendeChfRappen).toBe(0)
+    expect(b.sollChfRappen).toBe(20000)
+    expect(b.spendenSeparatAnzahl).toBe(0)
+    expect(b.spendenSeparatChfRappen).toBe(0)
+  })
+
+  it('separate Spenden addieren sich zu "stimmt so"-Spenden aus Verkäufen; Bericht-Felder zählen nur separate', () => {
+    const v = verkauf('s9', SAMSTAG, 'bar_chf', [DOENER], 1500, { spendeBehalten: true }) // Spende 3.00 im Beleg
+    const spChf = spende('sp9', SAMSTAG, 'bar_chf', 200)
+    const spTwint = spende('sp10', SAMSTAG, 'twint', 500)
+    const spEur = spende('sp11', SAMSTAG, 'bar_eur', 500)
+    const b = berechneAbschluss(input(SAMSTAG, [v], [], { spenden: [spChf, spTwint, spEur] }))
+    expect(b.barSpendeChfRappen).toBe(300 + 200)
+    expect(b.twintSpendeRappen).toBe(500)
+    expect(b.barSpendeEurChfRappen).toBe(450)
+    expect(b.sollChfRappen).toBe(20000 + 1200 + 300 + 200)
+    expect(b.sollEurCent).toBe(500)
+    expect(b.spendenSeparatAnzahl).toBe(3)
+    expect(b.spendenSeparatChfRappen).toBe(200 + 500 + 450)
+  })
+})
+
 describe('berechneAbschluss – gemischter Tag', () => {
   const v1 = verkauf('a', SAMSTAG, 'bar_chf', [BURGER, DOSE], 2000) // 16.00, Rückgeld 4.00
   const v2 = verkauf('b', SAMSTAG, 'bar_chf', [DOENER], 1500, { spendeBehalten: true }) // Spende 3.00
@@ -236,6 +347,8 @@ describe('berechneAbschluss – gemischter Tag', () => {
     expect(b.helferessenStueck).toBe(2)
     expect(b.helferessenEntgangenRappen).toBe(1100 + 250)
     expect(b.nachdrucke).toBe(2)
+    expect(b.spendenSeparatAnzahl).toBe(0)
+    expect(b.spendenSeparatChfRappen).toBe(0)
     expect(b.sollChfRappen).toBe(20000 + 3300 + 300 - 500 - 500)
     expect(b.sollEurCent).toBe(4500)
     expect(b.istChfRappen).toBe(25000)

@@ -5,6 +5,7 @@ import type {
   Druckauftrag,
   DruckStatus,
   Position,
+  Spende,
   Storno,
   VerkaufAnfrage,
   VerkaufAntwort,
@@ -121,15 +122,30 @@ export function bannerDruckProblem(verlauf: DruckVerlauf, ampel: DruckStatus['am
 
 // ---------------------------------------------------------------- Banner nach Storno
 
-/** Zustand des Banners nach dem Bezahlen: die Verkaufsantwort und, falls inzwischen storniert, der Storno. */
+/**
+ * Zustand des Banners nach dem Bezahlen: die Verkaufsantwort, falls inzwischen storniert der Storno und,
+ * falls das Rueckgeld nachtraeglich gespendet wurde, die separate Spende (auch eine stornierte, dann
+ * erscheint der Knopf "Rueckgeld als Spende" wieder).
+ */
 export interface BannerZustand {
   antwort: VerkaufAntwort
   storno: Storno | null
+  spende: Spende | null
 }
 
-/** Neuer Banner-Zustand fuer eine frische Verkaufsantwort (kein Storno). */
+/** Neuer Banner-Zustand fuer eine frische Verkaufsantwort (kein Storno, keine Spende). */
 export function bannerAusAntwort(antwort: VerkaufAntwort | null): BannerZustand | null {
-  return antwort === null ? null : { antwort, storno: null }
+  return antwort === null ? null : { antwort, storno: null, spende: null }
+}
+
+/**
+ * Wird zum Beleg des Banners nachtraeglich "Rueckgeld als Spende" erfasst (oder diese Spende storniert),
+ * merkt sich das Banner die Spende. Eine Spende zu einem anderen Beleg laesst das Banner unveraendert.
+ */
+export function bannerNachSpende(banner: BannerZustand | null, spende: Spende): BannerZustand | null {
+  if (banner === null) return null
+  if (spende.verkaufId !== banner.antwort.verkauf.id) return banner
+  return { ...banner, spende }
 }
 
 /**
@@ -139,7 +155,7 @@ export function bannerAusAntwort(antwort: VerkaufAntwort | null): BannerZustand 
 export function bannerNachStorno(banner: BannerZustand | null, storno: Storno): BannerZustand | null {
   if (banner === null) return null
   if (banner.antwort.verkauf.id !== storno.verkaufId) return banner
-  return { antwort: banner.antwort, storno }
+  return { ...banner, storno }
 }
 
 /** "Beleg K1-0004 storniert · Auszahlung CHF 2.50" bzw. ohne Auszahlung bei Helfer/0. */

@@ -39,6 +39,16 @@ export function formatEur(cent: number): string {
   return formatBetrag(cent)
 }
 
+/**
+ * Abzugszeile im Abschluss: positiver Betrag mit Minus ("-5.00"), 0 und -0 ohne Minus ("0.00").
+ * formatAbzug(500) = "-5.00", formatAbzug(0) = "0.00", formatAbzug(-0) = "0.00".
+ */
+export function formatAbzug(einheiten: number): string {
+  const ganz = Math.round(einheiten)
+  if (ganz === 0) return formatBetrag(0) // deckt 0 und -0 ab (-0 === 0)
+  return formatBetrag(-ganz)
+}
+
 /** formatKurs(9000) = "0.90"; krumme Kurse (z. B. 9250) mit vier Stellen: "0.9250" */
 export function formatKurs(kursX10000: number): string {
   const ganz = Math.round(kursX10000)

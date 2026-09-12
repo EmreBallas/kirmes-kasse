@@ -8,6 +8,7 @@ Verbindliche Schnittstellen für alle, die parallel an der Kasse bauen. Fachlich
 - Geld: CHF in ganzen Rappen, EUR in ganzen Cent, Kurs als `kursX10000`. Nie Fliesskomma für Geld.
 - Nichts wird gelöscht. Storno ist eine Gegenbuchung. Produkte werden deaktiviert (einzige Ausnahme: ein Produkt ohne einzige Verkaufsposition darf per `DELETE /api/produkte/:id` entfernt werden).
 - Verkauf wird gespeichert (Commit), bevor irgendetwas gedruckt wird.
+- Separate Spenden (Tabelle `spende`, Migration 003) werden **nachträglich** erfasst, ohne Bon und ohne Schublade: (a) „Rückgeld als Spende“ zu einem bereits gespeicherten Bar-Beleg (`verkaufId`, `typ = bar_chf`, `betrag` = dessen `rueckgeldChfRappen`; pro Beleg höchstens eine nicht stornierte Spende), (b) freie Spende ohne Kauf (`verkaufId = null`, Bar CHF / Twint in Rappen, Bar EUR in Cent mit Tageskurs). Sie fliessen im Abschluss in die bestehenden Zeilen Bar-Spende CHF / Bar-Spende EUR / Twint-Spende ein und erhöhen den Soll-Bestand (Bar CHF -> Soll CHF, Bar EUR -> Soll EUR, Twint -> kein Bargeld); `spendenSeparatAnzahl`/`spendenSeparatChfRappen` im Bericht sind informativ. Storno nur per `storniert_am` (die zuletzt erfasste ohne PIN, ältere mit PIN, nur solange der Kassentag der Spende offen ist); stornierte Spenden zählen nirgends.
 - `package.json` und `node_modules` nicht anfassen; fehlende Abhängigkeiten im Ergebnis melden.
 - Jedes Modul bringt vitest-Tests mit (`*.test.ts` neben dem Code). `npx vitest run src/<modul>` muss grün sein.
 - Alias: `@core/*`, `@server/*`, `@print/*` (electron.vite.config.ts, vitest.config.ts, tsconfig).
@@ -33,7 +34,7 @@ resources/     produkte-seed.json, seed.default.json
   - `bar_eur`: gegebenChf = eurZuChfRappen(gegeben); gleiche Regeln; spendeTyp `bar_eur`; `totalEurCent` = chfZuEurCentAufgerundet(total).
   - `twint`: gegebenChf = gegeben; gedeckt = gegeben ≥ total; Überzahlung = spende (`twint`), rueckgeld immer 0; Warnung `spende_ueber_200` bei spende > 20 000.
   - `helfer`: alles 0, gedeckt true.
-- `abschluss.ts`: `berechneAbschluss(input): AbschlussBericht` mit `input = { kassentag, verkaeufe, positionen, zahlungen, storni (des Kassentags des Stornos!), nachdrucke: number, istChfRappen, istEurCent }`. Formeln exakt wie Roadmap Abschnitt 4 (Geldsummen brutto, Storni nur als Gegenbuchung, Soll CHF = Startgeld + Bar-CHF + Bar-Spende-CHF − Rückgeld aus EUR − Storno-Auszahlungen; Soll EUR = Startgeld EUR + Σ gegeben EUR). **Stückzahlen** (Produktzeilen verkauft/helfer und Helferessen-Stück/entgangener Umsatz) zählen nur Verkäufe, die nicht am selben Kassentag storniert wurden (Testfall 28: Storno Helfer-Beleg → Helferessen-Stück sinken). Kontrollfälle aus der Roadmap als Tests.
+- `abschluss.ts`: `berechneAbschluss(input): AbschlussBericht` mit `input = { kassentag, verkaeufe, positionen, zahlungen, storni (des Kassentags des Stornos!), spenden (separate Spenden des Kassentags, stornierte werden ignoriert), nachdrucke: number, istChfRappen, istEurCent }`. Formeln exakt wie Roadmap Abschnitt 4 (Geldsummen brutto, Storni nur als Gegenbuchung, Soll CHF = Startgeld + Bar-CHF + Bar-Spende-CHF − Rückgeld aus EUR − Storno-Auszahlungen; Soll EUR = Startgeld EUR + Σ gegeben EUR). **Stückzahlen** (Produktzeilen verkauft/helfer und Helferessen-Stück/entgangener Umsatz) zählen nur Verkäufe, die nicht am selben Kassentag storniert wurden (Testfall 28: Storno Helfer-Beleg → Helferessen-Stück sinken). Kontrollfälle aus der Roadmap als Tests.
 - `bon.ts`: `bonModellVerkauf(verkauf, positionen, zahlung, opts: { nachdruck: 'alles'|'coupons'|'bon'|null }): DruckModell`; `bonModellAbschluss(bericht): DruckModell`; `bonModellTest(): DruckModell`. Layout (80 mm, 48 Zeichen Font A):
   - Coupon je Position der Gruppe `coupon`: Zeile 1 `"{anzahl}x"` dreifach, Zeile 2 Name doppelt, Leerzeile, `"Sa 19.09.2026  14:32"`, `"{belegnr}   Coupon {n}/{m}"`; bei Nachdruck zusätzlich `"NACHDRUCK"` doppelt fett als erste Zeile. Kein Standname.
   - Bon 1: Positionszeilen `{anzahl:>3} {name:<34}{betrag:>10}`, Trennlinie 48 `-`, `TOTAL CHF` / `Gegeben CHF` (bei EUR `Gegeben EUR` und `Kurs 0.90`) / `RÜCKGELD CHF` doppelt; bei Twint `Gegeben CHF - TWINT` und statt Rückgeld `Spende CHF - TWINT` (nur wenn > 0), Zeilen bleiben 48 Zeichen; bei Helfer Zeile `HELFER`; Leerzeile; Fusszeile rechtsbündig `"{belegnr}  {HH:MM}"`. Kein Logo, kein Datum im Kopf.
@@ -53,6 +54,14 @@ resources/     produkte-seed.json, seed.default.json
 
 - `db.ts`: `oeffneDb(pfad | ':memory:'): DatabaseSync` mit `PRAGMA journal_mode=WAL`, `PRAGMA synchronous=FULL`, `PRAGMA foreign_keys=ON`; `migriere(db)` führt `migrations/*.sql` nummeriert aus (Tabelle `schema_version`).
 - Migration 002 (`002_kassentag_pdf.sql`): `ALTER TABLE kassentag ADD COLUMN pdf_pfad TEXT;` – absoluter Pfad der Abschluss-PDF (`Kassentag.pdfPfad: string | null`), gesetzt vom Server nach dem `nachAbschluss`-Callback (`kassentagRepo.setzePdfPfad(id, pfad)`); NULL, solange keine PDF geschrieben wurde.
+- Migration 003 (`003_spende.sql`): Tabelle `spende` für separate Spenden (`Spende` in `types.ts`; `betrag` in Rappen bei bar_chf/twint, in Cent bei bar_eur; `betrag_chf_rappen` = CHF-Gegenwert, bei EUR `eurZuChfRappen(betrag, kurs_x10000)`; `mit_pin` = 1, wenn der Storno eine PIN brauchte):
+
+```sql
+CREATE TABLE spende (id TEXT PRIMARY KEY, kassentag_id TEXT NOT NULL REFERENCES kassentag(id), verkauf_id TEXT REFERENCES verkauf(id),
+  zeit TEXT NOT NULL, typ TEXT NOT NULL CHECK(typ IN ('bar_chf','bar_eur','twint')), betrag INTEGER NOT NULL CHECK(betrag > 0),
+  kurs_x10000 INTEGER, betrag_chf_rappen INTEGER NOT NULL, storniert_am TEXT, mit_pin INTEGER NOT NULL DEFAULT 0);
+CREATE INDEX idx_spende_kassentag ON spende(kassentag_id); CREATE INDEX idx_spende_verkauf ON spende(verkauf_id);
+```
 - Schema (Migration 001):
 
 ```sql
@@ -84,7 +93,7 @@ CREATE TABLE warenkorb_entwurf (id INTEGER PRIMARY KEY CHECK(id = 1), json TEXT 
 - Einstellungen (Tabelle `einstellung`, key/value als Text): `eur_kurs_x10000` (9000), `drucker_name` (TM-T20II), `kassen_praefix` (K1), `belegzaehler` (0), `pin_hash`, `pin_salt`, `backup_pfad_usb`, `port` (47100).
 - PIN: `pin_hash = sha256(pin_salt + ':' + pin)` hex (node:crypto). Geschützte Routen erwarten Header `X-Pin`; falsch -> 403 `{fehler:'pin_falsch'}`.
 - Seeds (`seed.ts`): beim ersten Start Produkte aus `resources/produkte-seed.json` (nur wenn Tabelle leer), Einstellungen aus `seed.local.json` (falls vorhanden, gitignored) sonst `resources/seed.default.json`.
-- Repositories (`repos/`): `produktRepo`, `kassentagRepo`, `verkaufRepo` (legt Verkauf + Positionen + Zahlung + Druckauftrag in **einer Transaktion** an, vergibt Belegnummer aus `belegzaehler`; bei existierender `verkauf.id` -> bestehenden Verkauf zurückgeben), `stornoRepo`, `druckauftragRepo`, `einstellungRepo`, `warenkorbRepo`. Tests gegen `':memory:'`, inkl. "doppelter POST = ein Verkauf".
+- Repositories (`repos/`): `produktRepo`, `kassentagRepo`, `verkaufRepo` (legt Verkauf + Positionen + Zahlung + Druckauftrag in **einer Transaktion** an, vergibt Belegnummer aus `belegzaehler`; bei existierender `verkauf.id` -> bestehenden Verkauf zurückgeben), `stornoRepo`, `spendeRepo` (`erstelle(anfrage, kassentagId, kursX10000)` idempotent über `id` -> `{ spende, bereitsVorhanden }`; `letzte(limit)` inkl. stornierte mit `belegnr`/`mitPin` (`SpendeEintrag`); `fuerKassentag(id)` und `fuerVerkauf(verkaufId)` nur nicht stornierte; `storno(id, mitPin)` setzt `storniert_am`; `istLetzte(id)` = zuletzt erfasste nicht stornierte Spende), `druckauftragRepo`, `einstellungRepo`, `warenkorbRepo`. Tests gegen `':memory:'`, inkl. "doppelter POST = ein Verkauf". `loescheTestdaten()` leert auch `spende`.
 - `app.ts`: `erstelleApp(deps): Hono` mit Routen (alle JSON, Fehler als `FehlerAntwort` mit passendem HTTP-Status):
 
 | Methode | Pfad | Body / Antwort |
@@ -99,12 +108,15 @@ CREATE TABLE warenkorb_entwurf (id INTEGER PRIMARY KEY CHECK(id = 1), json TEXT 
 | GET | `/api/kassentag/aktuell` | `{ kassentag, vortagOffen, vorschlagStartgeldChfRappen, letzterAbgeschlossener }` (`letzterAbgeschlossener: Kassentag \| null` für den Nachdruck des Abschluss-Bons und die Anzeige des Abschluss-PDF-Pfads `pdfPfad` im Kassenstart) |
 | GET | `/api/kassentag/:id` | `Kassentag` (inkl. `pdfPfad`); 404 `kassentag_nicht_gefunden`. Der Renderer fragt damit nach dem Abschluss alle 1 s (max. 20 s) den PDF-Pfad ab |
 | POST | `/api/kassentag/start` | `KassentagStartAnfrage` -> `Kassentag` (409 `kassentag_offen`, wenn offen, auch bei offenem Vortag) |
-| GET | `/api/kassentag/aktuell/bericht` | `AbschlussBericht` (Vorschau ohne Ist) |
+| GET | `/api/kassentag/aktuell/bericht` | `AbschlussBericht` (Vorschau ohne Ist; separate Spenden des Tages sind eingerechnet) |
 | POST | `/api/kassentag/:id/abschluss` | `KassentagAbschlussAnfrage` -> `AbschlussBericht` (+ Druckauftrag `abschluss`). Der `nachAbschluss`-Callback (PDF, Backup) wird gestartet, aber **nicht** abgewartet (Antwort bleibt schnell); liefert er `{ pdfPfad }` (auch als Promise), speichert der Server den Pfad per `setzePdfPfad`; Fehler werden geloggt |
 | POST | `/api/archiv/oeffnen` | -> `{ ok: true }`: ruft `deps.oeffneArchiv()` auf (Electron: `shell.openPath(<daten>/archiv)`, Ordner wird angelegt); ohne Callback 501 `nicht_verfuegbar` („Nur in der Kassen-App möglich.“), bei Fehler 500 `archiv_oeffnen_fehlgeschlagen` |
 | POST | `/api/kassentag/:id/abschluss/nachdruck` | -> `{ druckauftragId }`: Abschluss-Bon eines abgeschlossenen Tages nachdrucken (Bericht aus gespeichertem Ist neu berechnet, Zeitstempel = Abschlusszeit, Druckauftrag `abschluss` mit Zeile NACHDRUCK, kein PDF/Backup); 409 `nicht_abgeschlossen`, 404 |
 | POST | `/api/verkauf` | `VerkaufAnfrage` -> `VerkaufAntwort` (409 `nicht_gedeckt`, 409 `bestaetigung_noetig` bei Warnung ohne Bestätigung, 409 `kein_kassentag`, 409 `vortag_offen`, wenn der offene Kassentag ein früheres Datum hat: zuerst Abschluss nachholen) |
-| GET | `/api/verkauf/letzte?limit=20` | `{ verkauf, zahlung, positionen, storno }[]` neueste zuerst |
+| GET | `/api/verkauf/letzte?limit=20` | `{ verkauf, zahlung, positionen, storno, spende }[]` neueste zuerst (`spende`: verknüpfte nicht stornierte Rückgeld-Spende oder `null`) |
+| POST | `/api/spende` | `SpendeAnfrage` -> `{ spende: Spende, bereitsVorhanden }` (201 neu, 200 bei gleicher `id`; kein Bon, keine Schublade). 400 bei `betrag <= 0` oder unbekanntem `typ`; 409 `kein_kassentag`, 409 `vortag_offen`; mit `verkaufId`: 404 `verkauf_nicht_gefunden`, 409 `verkauf_storniert`, 409 `bereits_gespendet` (Beleg hat schon eine nicht stornierte Spende), 409 `kein_rueckgeld` (Beleg ohne Rückgeld, z. B. passend/Twint/Helfer), 409 `betrag_ungleich_rueckgeld` (`typ` muss `bar_chf` und `betrag` = `rueckgeldChfRappen` des Belegs sein) |
+| GET | `/api/spende/letzte?limit=20` | `SpendeEintrag[]` = `(Spende & { belegnr: string \| null, mitPin })[]` neueste zuerst, inkl. stornierte |
+| POST | `/api/spende/:id/storno` (PIN nur, wenn nicht die zuletzt erfasste nicht stornierte Spende) | kein Body -> `Spende & { mitPin }` mit `storniertAm`; 404 `spende_nicht_gefunden`, 409 `bereits_storniert`, 409 `kassentag_abgeschlossen` (Kassentag der Spende ist abgeschlossen), 403 `pin_falsch` |
 | POST | `/api/verkauf/:id/storno` (PIN nur, wenn nicht der letzte Beleg) | `StornoAnfrage` -> `Storno` (409 wenn schon storniert, 409 `kein_kassentag`, 409 `vortag_offen`) |
 | POST | `/api/verkauf/:id/nachdruck` | `NachdruckAnfrage` -> `{ druckauftragId }` (409 wenn storniert) |
 | GET | `/api/druck/:id` | `Druckauftrag` (404 `druckauftrag_nicht_gefunden`); der Renderer verfolgt damit den eigenen Beleg-Auftrag im Banner |

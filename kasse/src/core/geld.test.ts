@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   chfZuEurCentAufgerundet,
   eurZuChfRappen,
+  formatAbzug,
   formatChf,
   formatEur,
   formatKurs,
@@ -24,6 +25,22 @@ describe('formatChf / formatEur', () => {
   it('formatiert EUR gleich', () => {
     expect(formatEur(2000)).toBe('20.00')
     expect(formatEur(1300)).toBe('13.00')
+  })
+})
+
+describe('formatAbzug', () => {
+  it('zeigt Abzüge mit Minus', () => {
+    expect(formatAbzug(500)).toBe('-5.00')
+    expect(formatAbzug(1700)).toBe('-17.00')
+    expect(formatAbzug(5)).toBe('-0.05')
+  })
+  it('zeigt 0 und -0 ohne Minus (kein "-0.00")', () => {
+    expect(formatAbzug(0)).toBe('0.00')
+    expect(formatAbzug(-0)).toBe('0.00')
+    expect(formatAbzug(0.2)).toBe('0.00')
+  })
+  it('kehrt negative Abzüge um (Gutschrift)', () => {
+    expect(formatAbzug(-150)).toBe('1.50')
   })
 })
 

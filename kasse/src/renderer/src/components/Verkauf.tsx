@@ -1,16 +1,19 @@
 /**
  * Verkaufsbildschirm: Kopfzeile, Produktraster links, Warenkorb rechts, Banner nach dem Bezahlen,
- * Bezahldialog als Overlay.
+ * Bezahldialog als Overlay. Dazu die freie Spende ohne Kauf (Knopf "Spende" im Warenkorb-Panel,
+ * Spendedialog als Overlay, danach eigener Banner "Spende CHF 5.00 (Twint) erfasst"; Warenkorb bleibt).
  */
 import { useCallback, useEffect, useState, type JSX } from 'react'
-import type { Einstellungen, Kassentag, Produkt, StatusAntwort, VerkaufAntwort, Warenkorb, Zahlart } from '@core/types'
+import type { Einstellungen, Kassentag, Produkt, Spende, StatusAntwort, VerkaufAntwort, Warenkorb, Zahlart } from '@core/types'
 import { entfernen, hinzufuegen, leererWarenkorb, mengeAendern } from '@core/warenkorb'
 import { api, fehlerMeldung } from '../api'
 import type { BannerZustand } from '../bezahlen'
+import { spendeBannerText } from '../spende'
 import { Banner } from './Banner'
 import { Bezahldialog } from './Bezahldialog'
 import { Kopfzeile } from './Kopfzeile'
 import { Produktraster } from './Produktraster'
+import { Spendedialog } from './Spendedialog'
 import { WarenkorbPanel } from './WarenkorbPanel'
 
 interface Props {
@@ -22,6 +25,8 @@ interface Props {
   onWarenkorb: (w: Warenkorb) => void
   banner: BannerZustand | null
   onBanner: (b: VerkaufAntwort | null) => void
+  /** "Rueckgeld als Spende" zum Beleg im Banner wurde erfasst */
+  onSpendeErfasst: (spende: Spende) => void
   /** Kasse beenden (PIN); nur im Electron-Fenster vorhanden */
   onBeenden?: () => void
   onLetzte: () => void
@@ -37,6 +42,9 @@ export function Verkauf(p: Props): JSX.Element {
   const [meldung, setMeldung] = useState<string | null>(null)
   /** true, solange das Banner ein Druckproblem zeigt: dann schliesst es nur ueber den Knopf */
   const [bannerFest, setBannerFest] = useState(false)
+  const [spendeDialog, setSpendeDialog] = useState(false)
+  /** zuletzt erfasste freie Spende (Banner, bis zum naechsten Antippen) */
+  const [spendeBanner, setSpendeBanner] = useState<Spende | null>(null)
 
   const ladeProdukte = useCallback(async (): Promise<void> => {
     try {
@@ -55,6 +63,7 @@ export function Verkauf(p: Props): JSX.Element {
     if (produkt.preisRappen === null) return
     // Banner bleibt bis zum naechsten Antippen einer Kachel; bei Druckproblem nur ueber den Knopf
     if (!bannerFest) p.onBanner(null)
+    setSpendeBanner(null)
     setMeldung(null)
     p.onWarenkorb(hinzufuegen(p.warenkorb, produkt))
   }
@@ -92,12 +101,25 @@ export function Verkauf(p: Props): JSX.Element {
           antwort={p.banner.antwort}
           storno={p.banner.storno}
           druck={p.status?.druck ?? null}
+          spende={p.banner.spende}
           onDruckProblem={setBannerFest}
+          onSpende={p.onSpendeErfasst}
           onSchliessen={() => {
             setBannerFest(false)
             p.onBanner(null)
           }}
         />
+      ) : null}
+      {spendeBanner !== null ? (
+        <div className="banner banner-spende-frei" role="status">
+          <div className="banner-links">
+            <div className="banner-rueckgeld banner-rueckgeld-klein">{spendeBannerText(spendeBanner)}</div>
+            <div className="banner-druck banner-druck-ok">Kein Bon. Die Spende zählt im Abschluss zu den Spenden-Zeilen.</div>
+          </div>
+          <button type="button" className="knopf knopf-neutral" onClick={() => setSpendeBanner(null)} aria-label="Spenden-Banner schliessen">
+            ×
+          </button>
+        </div>
       ) : null}
       {meldung !== null ? (
         <div className="meldung-fehler meldung-leiste" role="alert">
@@ -129,10 +151,27 @@ export function Verkauf(p: Props): JSX.Element {
           onZahlart={(za) => {
             if (p.warenkorb.zeilen.length === 0) return
             if (!bannerFest) p.onBanner(null)
+            setSpendeBanner(null)
             setZahlart(za)
+          }}
+          spendeMoeglich={p.kassentag !== null}
+          onSpende={() => {
+            setSpendeBanner(null)
+            setSpendeDialog(true)
           }}
         />
       </div>
+      {spendeDialog ? (
+        <Spendedialog
+          kursX10000={kurs}
+          onAbbrechen={() => setSpendeDialog(false)}
+          onErfolg={(spende) => {
+            setSpendeDialog(false)
+            if (!bannerFest) p.onBanner(null)
+            setSpendeBanner(spende)
+          }}
+        />
+      ) : null}
       {zahlart !== null ? (
         <Bezahldialog
           zahlart={zahlart}

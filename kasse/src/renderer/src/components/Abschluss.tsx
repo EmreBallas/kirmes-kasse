@@ -217,6 +217,7 @@ export function Abschluss({ kassentag, onFertig, onZurueck }: Props): JSX.Elemen
               <Zeile label="Twint-Umsatz (brutto)" wert={formatChf(bericht.twintUmsatzRappen)} />
               <Zeile label="  davon storniert (bar ausbezahlt)" wert={formatChf(bericht.twintStorniertRappen)} />
               <Zeile label="Twint-Spende" wert={formatChf(bericht.twintSpendeRappen)} />
+              <Zeile label={`  davon separat erfasst (${String(bericht.spendenSeparatAnzahl)})`} wert={formatChf(bericht.spendenSeparatChfRappen)} />
               <Zeile label={`Storni (${String(bericht.storniAnzahl)})`} wert={`− ${formatChf(bericht.storniAuszahlungRappen)}`} />
               <Zeile label={`Helferessen (${String(bericht.helferessenStueck)} Stück, entgangen)`} wert={formatChf(bericht.helferessenEntgangenRappen)} />
               <Zeile label="Nachdrucke" wert={String(bericht.nachdrucke)} />

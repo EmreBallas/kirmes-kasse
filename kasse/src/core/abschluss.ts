@@ -3,8 +3,10 @@
  * Alle Geldsummen brutto über ALLE Verkäufe des Kassentags (einschliesslich später stornierter);
  * Storni ausschliesslich als Gegenbuchung über storno.kassentagId (Tag des Stornos).
  * Stückzahlen (je Produkt und Helferessen) zählen nur Verkäufe, die nicht am selben Tag storniert wurden.
+ * Separat erfasste Spenden (nachträglich, ohne Bon) fliessen in die bestehenden Spende-Zeilen ein und
+ * erhöhen den Soll-Bestand (Bar CHF -> Soll CHF, Bar EUR -> Soll EUR, Twint -> kein Bargeld); stornierte zählen nirgends.
  */
-import type { AbschlussBericht, Kassentag, Position, ProduktZeile, Storno, Verkauf, Zahlung } from './types'
+import type { AbschlussBericht, Kassentag, Position, ProduktZeile, Spende, Storno, Verkauf, Zahlung } from './types'
 
 export interface AbschlussInput {
   kassentag: Kassentag
@@ -16,6 +18,8 @@ export interface AbschlussInput {
   zahlungen: readonly Zahlung[]
   /** Storni mit kassentagId = Kassentag des STORNOS (auch Storni von Vortags-Belegen). */
   storni: readonly Storno[]
+  /** Separat erfasste Spenden mit kassentagId = Kassentag (stornierte werden ignoriert). */
+  spenden: readonly Spende[]
   /** Anzahl Druckaufträge typ LIKE 'nachdruck_%' des Tages. */
   nachdrucke: number
   istChfRappen: number | null
@@ -28,6 +32,7 @@ export function berechneAbschluss(input: AbschlussInput): AbschlussBericht {
   const { kassentag } = input
   const verkaeufe = input.verkaeufe.filter((v) => v.kassentagId === kassentag.id)
   const storni = input.storni.filter((s) => s.kassentagId === kassentag.id)
+  const spenden = input.spenden.filter((s) => s.kassentagId === kassentag.id && s.storniertAm === null)
 
   const verkaufIds = new Set(verkaeufe.map((v) => v.id))
   const zahlartVon = new Map(verkaeufe.map((v) => [v.id, v.zahlart] as const))
@@ -36,22 +41,36 @@ export function berechneAbschluss(input: AbschlussInput): AbschlussBericht {
   /** Verkäufe, die am HEUTIGEN Tag storniert wurden (Vortags-Storni betreffen nur die Auszahlung). */
   const heuteStorniert = new Set(storni.map((s) => s.verkaufId))
 
+  // --- Separate Spenden (nachträglich erfasst, ohne Bon), je Typ
+  const spendenBarChf = spenden.filter((s) => s.typ === 'bar_chf')
+  const spendenBarEur = spenden.filter((s) => s.typ === 'bar_eur')
+  const spendenTwint = spenden.filter((s) => s.typ === 'twint')
+  const spendenSeparatAnzahl = spenden.length
+  const spendenSeparatChfRappen = summe(spenden, (s) => s.betragChfRappen)
+
   // --- Bar CHF
   const barEinnahmenChfRappen = summe(verkaeufe.filter((v) => v.zahlart === 'bar_chf'), (v) => v.totalRappen)
-  const barSpendeChfRappen = summe(zahlungen.filter((z) => z.spendeTyp === 'bar_chf'), (z) => z.spendeChfRappen)
+  const barSpendeChfRappen =
+    summe(zahlungen.filter((z) => z.spendeTyp === 'bar_chf'), (z) => z.spendeChfRappen) +
+    summe(spendenBarChf, (s) => s.betragChfRappen)
 
-  // --- Bar EUR
+  // --- Bar EUR: Stück EUR nur aus Verkäufen; separate EUR-Spenden erhöhen nur den Soll-Bestand EUR
   const zahlungenEur = zahlungen.filter((z) => zahlartVon.get(z.verkaufId) === 'bar_eur')
   const barEinnahmenEurCent = summe(zahlungenEur, (z) => z.gegeben)
   const barEinnahmenEurChfRappen = summe(zahlungenEur, (z) => z.gegebenChfRappen)
   const rueckgeldAusEurRappen = summe(zahlungenEur, (z) => z.rueckgeldChfRappen)
-  const barSpendeEurChfRappen = summe(zahlungen.filter((z) => z.spendeTyp === 'bar_eur'), (z) => z.spendeChfRappen)
+  const barSpendeEurChfRappen =
+    summe(zahlungen.filter((z) => z.spendeTyp === 'bar_eur'), (z) => z.spendeChfRappen) +
+    summe(spendenBarEur, (s) => s.betragChfRappen)
+  const spendenEurCent = summe(spendenBarEur, (s) => s.betrag)
 
-  // --- Twint
+  // --- Twint (Twint-Spenden ändern den Bargeld-Soll nicht)
   const twintVerkaeufe = verkaeufe.filter((v) => v.zahlart === 'twint')
   const twintUmsatzRappen = summe(twintVerkaeufe, (v) => v.totalRappen)
   const twintStorniertRappen = summe(twintVerkaeufe.filter((v) => heuteStorniert.has(v.id)), (v) => v.totalRappen)
-  const twintSpendeRappen = summe(zahlungen.filter((z) => z.spendeTyp === 'twint'), (z) => z.spendeChfRappen)
+  const twintSpendeRappen =
+    summe(zahlungen.filter((z) => z.spendeTyp === 'twint'), (z) => z.spendeChfRappen) +
+    summe(spendenTwint, (s) => s.betragChfRappen)
 
   // --- Storni (Gegenbuchung am Tag des Stornos)
   const storniAnzahl = storni.length
@@ -69,7 +88,7 @@ export function berechneAbschluss(input: AbschlussInput): AbschlussBericht {
   // --- Soll / Ist / Differenz
   const sollChfRappen =
     kassentag.startgeldChfRappen + barEinnahmenChfRappen + barSpendeChfRappen - rueckgeldAusEurRappen - storniAuszahlungRappen
-  const sollEurCent = kassentag.startgeldEurCent + barEinnahmenEurCent
+  const sollEurCent = kassentag.startgeldEurCent + barEinnahmenEurCent + spendenEurCent
   const istChfRappen = input.istChfRappen
   const istEurCent = input.istEurCent
   const differenzChfRappen = istChfRappen === null ? null : istChfRappen - sollChfRappen
@@ -94,6 +113,8 @@ export function berechneAbschluss(input: AbschlussInput): AbschlussBericht {
     twintUmsatzRappen,
     twintStorniertRappen,
     twintSpendeRappen,
+    spendenSeparatAnzahl,
+    spendenSeparatChfRappen,
     storniAnzahl,
     storniAuszahlungRappen,
     helferessenStueck,

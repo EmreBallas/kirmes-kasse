@@ -224,6 +224,7 @@ export function bonModellAbschluss(b: AbschlussBericht, opts: AbschlussBonOption
   z.push(zeile(labelWert('Spende Bar CHF', formatChf(b.barSpendeChfRappen))))
   z.push(zeile(labelWert('Spende Bar EUR (CHF)', formatChf(b.barSpendeEurChfRappen))))
   z.push(zeile(labelWert('Spende Twint CHF', formatChf(b.twintSpendeRappen))))
+  z.push(zeile(labelWert(`  davon separat erfasst (${String(b.spendenSeparatAnzahl)})`, formatChf(b.spendenSeparatChfRappen))))
   z.push(zeile(labelWert(`Storni (${String(b.storniAnzahl)})`, `-${formatChf(b.storniAuszahlungRappen)}`)))
   z.push(zeile(labelWert(`Helferessen ${String(b.helferessenStueck)} Stk`, formatChf(b.helferessenEntgangenRappen))))
   z.push(zeile(labelWert('Nachdrucke', String(b.nachdrucke))))

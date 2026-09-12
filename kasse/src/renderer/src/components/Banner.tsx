@@ -10,11 +10,17 @@
  * Wurde der Beleg des Banners inzwischen in "Letzte Verkaeufe" storniert (storno != null), zeigt das
  * Banner statt Rueckgeld die Storno-Zeile ("Beleg K1-0004 storniert · Auszahlung CHF 2.50"), verfolgt
  * keinen Druck mehr und schliesst wie gewohnt beim naechsten Antippen einer Kachel.
+ *
+ * "Rueckgeld als Spende": Bei einem Bar-Beleg mit Rueckgeld > 0 bietet das Banner einen Knopf an, weil der
+ * Kunde oft erst nach dem Kassieren "passt schon" sagt. Die Spende wird separat erfasst (POST /api/spende,
+ * kein Bon); danach zeigt das Banner "Spende CHF 2.00 erfasst" und der Knopf verschwindet.
  */
 import { useEffect, useRef, useState, type JSX } from 'react'
-import type { Druckauftrag, DruckStatus, Storno, VerkaufAntwort } from '@core/types'
+import type { Druckauftrag, DruckStatus, Spende, Storno, VerkaufAntwort } from '@core/types'
 import { formatChf } from '@core/geld'
 import { api } from '../api'
+import { rueckgeldSpendeMoeglich, rueckgeldSpendeText } from '../spende'
+import { RueckgeldSpendeFrage } from './RueckgeldSpende'
 import {
   DRUCK_POLL_MS,
   STORNO_GRUND_NAME,
@@ -31,17 +37,22 @@ interface Props {
   /** Storno dieses Belegs, falls er nach dem Bezahlen storniert wurde */
   storno?: Storno | null
   druck: DruckStatus | null
+  /** nachtraeglich erfasste "Rueckgeld als Spende" zu diesem Beleg (auch stornierte) */
+  spende?: Spende | null
   onSchliessen: () => void
   /** meldet, ob das Banner gerade ein Druckproblem zeigt (dann nur ueber den Knopf schliessen) */
   onDruckProblem?: (problem: boolean) => void
+  /** "Rueckgeld als Spende" wurde erfasst; fehlt der Callback, gibt es keinen Knopf */
+  onSpende?: (spende: Spende) => void
 }
 
-export function Banner({ antwort, storno = null, druck, onSchliessen, onDruckProblem }: Props): JSX.Element {
+export function Banner({ antwort, storno = null, druck, spende = null, onSchliessen, onDruckProblem, onSpende }: Props): JSX.Element {
   const { verkauf, zahlung, sofortAusgeben, positionen } = antwort
   const auftragId = antwort.druckauftragId
   const storniert = storno !== null
   const [auftrag, setAuftrag] = useState<Druckauftrag | null>(null)
   const [vergangenMs, setVergangenMs] = useState(0)
+  const [spendeFrage, setSpendeFrage] = useState(false)
   const start = useRef(Date.now())
   const fertig = auftrag?.status === 'done' || auftrag?.status === 'failed'
 
@@ -79,6 +90,8 @@ export function Banner({ antwort, storno = null, druck, onSchliessen, onDruckPro
   const druckFehler = auftrag?.fehler ?? druck?.letzterFehler ?? null
   const handschreiben = handschreibListe(positionen)
   const zeigeSpende = zahlung.spendeChfRappen > 0
+  const spendeErfasst = spende !== null && spende.storniertAm === null
+  const spendeKnopf = onSpende !== undefined && rueckgeldSpendeMoeglich(verkauf, zahlung, storniert, spende)
 
   useEffect(() => {
     onDruckProblem?.(druckProblem)
@@ -128,6 +141,7 @@ export function Banner({ antwort, storno = null, druck, onSchliessen, onDruckPro
             ) : null}
           </div>
         )}
+        {spendeErfasst && spende !== null ? <div className="banner-spende-erfasst">{rueckgeldSpendeText(spende)}</div> : null}
         {sofortAusgeben.length > 0 ? (
           <div className="banner-sofort">Sofort ausgeben: {listeAlsText(sofortAusgeben)}</div>
         ) : null}
@@ -144,9 +158,27 @@ export function Banner({ antwort, storno = null, druck, onSchliessen, onDruckPro
           <div className="banner-druck banner-druck-ok">Gedruckt</div>
         ) : null}
       </div>
-      <button type="button" className="knopf knopf-neutral" onClick={onSchliessen} aria-label="Banner schliessen">
-        ×
-      </button>
+      <div className="banner-aktionen">
+        <button type="button" className="knopf knopf-neutral" onClick={onSchliessen} aria-label="Banner schliessen">
+          ×
+        </button>
+        {spendeKnopf ? (
+          <button type="button" className="knopf knopf-neutral knopf-rueckgeld-spende" onClick={() => setSpendeFrage(true)}>
+            Rückgeld als Spende
+          </button>
+        ) : null}
+      </div>
+      {spendeFrage && onSpende !== undefined ? (
+        <RueckgeldSpendeFrage
+          verkauf={verkauf}
+          zahlung={zahlung}
+          onAbbrechen={() => setSpendeFrage(false)}
+          onErfasst={(sp) => {
+            setSpendeFrage(false)
+            onSpende(sp)
+          }}
+        />
+      ) : null}
     </div>
   )
 }

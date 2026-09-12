@@ -12,6 +12,7 @@ import { cors } from 'hono/cors'
 import { createMiddleware } from 'hono/factory'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { berechneAbschluss } from '@core/abschluss'
+import { formatChf } from '@core/geld'
 import {
   bonModellAbschluss,
   bonModellTest,
@@ -28,6 +29,8 @@ import type {
   Kassentag,
   Position,
   Produkt,
+  Spende,
+  SpendeAnfrage,
   StatusAntwort,
   Verkauf,
   VerkaufAntwort,
@@ -42,6 +45,7 @@ import { erstelleDruckDienst, type DruckDienst } from './druck'
 import {
   erstelleRepos,
   istGruppe,
+  istSpendeTyp,
   istStornoGrund,
   istWarenkorb,
   istZahlart,
@@ -168,6 +172,7 @@ function pdfPfadAus(r: unknown): string | null {
 const ZAHLARTEN = ['bar_chf', 'bar_eur', 'twint', 'helfer'] as const
 const NACHDRUCK_ARTEN = ['alles', 'coupons', 'bon'] as const
 const STORNO_GRUENDE = ['tippfehler', 'ausverkauft', 'abgesprungen'] as const
+const SPENDE_TYPEN = ['bar_chf', 'bar_eur', 'twint'] as const
 
 export function erstelleApp(deps: AppDeps): Hono {
   return erstelleKassenApp(deps).app
@@ -308,6 +313,8 @@ export function erstelleKassenApp(deps: AppDeps): KassenApp {
       positionen,
       zahlungen,
       storni: repos.storno.desKassentags(kassentag.id),
+      // Separat erfasste Spenden des Tages (nicht stornierte): erhöhen Spende-Zeilen und Soll-Bestand
+      spenden: repos.spende.fuerKassentag(kassentag.id),
       nachdrucke: repos.druckauftrag.anzahlNachdrucke(kassentag.id),
       istChfRappen,
       istEurCent,
@@ -698,7 +705,13 @@ export function erstelleKassenApp(deps: AppDeps): KassenApp {
   app.get('/api/verkauf/letzte', (c) => {
     const roh = Number(c.req.query('limit') ?? '20')
     const limit = Number.isSafeInteger(roh) && roh > 0 ? Math.min(roh, 200) : 20
-    return c.json(repos.verkauf.letzte(limit))
+    // Jede Zeile zusätzlich mit der verknüpften nicht stornierten Spende (Rückgeld als Spende) oder null
+    return c.json(
+      repos.verkauf.letzte(limit).map((d) => ({
+        ...d,
+        spende: repos.spende.fuerVerkauf(d.verkauf.id)
+      }))
+    )
   })
 
   app.post('/api/verkauf/:id/storno', async (c) => {
@@ -773,6 +786,120 @@ export function erstelleKassenApp(deps: AppDeps): KassenApp {
     })
     druckAnstossen()
     return c.json({ druckauftragId: auftrag.id })
+  })
+
+  // ---------------------------------------------------------------- Spende (separat, ohne Bon)
+
+  /**
+   * Separate Spende: "Rückgeld als Spende" zu einem bereits abgeschlossenen Bar-Beleg (verkaufId,
+   * betrag = dessen Rückgeld in CHF) oder freie Spende ohne Kauf. Druckt keinen Bon, die Schublade
+   * bleibt zu. Idempotent über id (Fachregel 17, wie beim Verkauf).
+   */
+  app.post('/api/spende', async (c) => {
+    const o = await leseBody(c)
+    const id = textFeld(o, 'id', { max: 64 })
+    const typ = auswahlFeld(o, 'typ', SPENDE_TYPEN)
+    if (!istSpendeTyp(typ)) throw new EingabeFehler('Unbekannter Spendentyp')
+    const betrag = ganzzahlFeld(o, 'betrag', { min: 1 })
+    const verkaufId = textOderNullFeld(o, 'verkaufId')
+    if (verkaufId !== null && verkaufId.trim() === '')
+      throw new EingabeFehler('Feld "verkaufId" ist leer')
+    const anfrage: SpendeAnfrage = { id, typ, betrag, verkaufId }
+
+    const vorhanden = repos.spende.finde(id)
+    if (vorhanden !== null) return c.json({ spende: vorhanden, bereitsVorhanden: true })
+
+    const buchung = buchungsKassentag(c)
+    if ('antwort' in buchung) return buchung.antwort
+    const { kassentag } = buchung
+
+    if (verkaufId !== null) {
+      const detail = repos.verkauf.detail(verkaufId)
+      if (detail === null) return fehler(c, 404, 'verkauf_nicht_gefunden', 'Beleg nicht gefunden.')
+      const { verkauf, zahlung } = detail
+      if (verkauf.storniertAm !== null || detail.storno !== null) {
+        return fehler(
+          c,
+          409,
+          'verkauf_storniert',
+          `Beleg ${verkauf.belegnr} ist storniert, das Rückgeld kann nicht gespendet werden.`
+        )
+      }
+      if (repos.spende.fuerVerkauf(verkauf.id) !== null) {
+        return fehler(
+          c,
+          409,
+          'bereits_gespendet',
+          `Das Rückgeld von Beleg ${verkauf.belegnr} wurde bereits gespendet.`
+        )
+      }
+      // Rückgeld gibt es nur bei Bar-Belegen, und es ist immer CHF (auch bei EUR-Zahlung)
+      if (zahlung.rueckgeldChfRappen <= 0) {
+        return fehler(
+          c,
+          409,
+          'kein_rueckgeld',
+          `Beleg ${verkauf.belegnr} hat kein Rückgeld, das gespendet werden könnte.`
+        )
+      }
+      if (typ !== 'bar_chf' || betrag !== zahlung.rueckgeldChfRappen) {
+        return fehler(
+          c,
+          409,
+          'betrag_ungleich_rueckgeld',
+          `Rückgeld-Spende zu Beleg ${verkauf.belegnr} muss Bar CHF ${formatChf(zahlung.rueckgeldChfRappen)} sein.`
+        )
+      }
+    }
+
+    const erstellt = repos.spende.erstelle(
+      anfrage,
+      kassentag.id,
+      repos.einstellung.einstellungen().eurKursX10000
+    )
+    return c.json(erstellt, erstellt.bereitsVorhanden ? 200 : 201)
+  })
+
+  // Die neuesten Spenden (inkl. stornierte) mit Belegnummer des verknüpften Verkaufs, neueste zuerst
+  app.get('/api/spende/letzte', (c) => {
+    const roh = Number(c.req.query('limit') ?? '20')
+    const limit = Number.isSafeInteger(roh) && roh > 0 ? Math.min(roh, 200) : 20
+    return c.json(repos.spende.letzte(limit))
+  })
+
+  /**
+   * Storno einer Spende (Tippfehler): die zuletzt erfasste ohne PIN, ältere nur mit PIN. Nichts wird
+   * gelöscht (storniert_am). Nur solange der Kassentag der Spende offen ist, sonst wäre der Abschluss falsch.
+   */
+  app.post('/api/spende/:id/storno', (c) => {
+    const spende = repos.spende.finde(c.req.param('id'))
+    if (spende === null) return fehler(c, 404, 'spende_nicht_gefunden', 'Spende nicht gefunden.')
+    if (spende.storniertAm !== null) {
+      return fehler(c, 409, 'bereits_storniert', 'Diese Spende ist bereits storniert.')
+    }
+    const kassentag = repos.kassentag.finde(spende.kassentagId)
+    if (kassentag === null || kassentag.abgeschlossenAm !== null) {
+      return fehler(
+        c,
+        409,
+        'kassentag_abgeschlossen',
+        'Der Kassentag dieser Spende ist abgeschlossen, die Spende kann nicht mehr storniert werden.'
+      )
+    }
+    let mitPinGebucht = false
+    if (!repos.spende.istLetzte(spende.id)) {
+      if (!repos.einstellung.pruefePin(c.req.header('X-Pin'))) {
+        return fehler(c, 403, 'pin_falsch', 'Storno älterer Spenden nur mit PIN.')
+      }
+      mitPinGebucht = true
+    }
+    const ergebnis = repos.spende.storno(spende.id, mitPinGebucht)
+    if (ergebnis.ergebnis === 'nicht_gefunden')
+      return fehler(c, 404, 'spende_nicht_gefunden', 'Spende nicht gefunden.')
+    if (ergebnis.ergebnis === 'bereits_storniert')
+      return fehler(c, 409, 'bereits_storniert', 'Diese Spende ist bereits storniert.')
+    const storniert: Spende = ergebnis.spende
+    return c.json({ ...storniert, mitPin: mitPinGebucht })
   })
 
   // ---------------------------------------------------------------- Archiv

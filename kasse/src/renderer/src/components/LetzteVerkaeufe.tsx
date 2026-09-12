@@ -1,28 +1,44 @@
 /**
  * Letzte Verkaeufe: Liste mit Nachdruck (alles / Coupons / Bon 1) und Storno mit Grund.
  * Letzter Beleg ohne PIN, aeltere mit PIN-Dialog; stornierte Belege ohne Nachdruck.
+ *
+ * Spenden: Pro Bar-Zeile mit Rueckgeld > 0 (nicht storniert, noch ohne Spende) der Knopf "Rueckgeld als
+ * Spende" (gleiche Rueckfrage wie im Banner). Darunter der Abschnitt "Letzte Spenden" (Zeit, Typ, Betrag,
+ * Beleg, storniert) mit Storno: die zuletzt erfasste ohne PIN, aeltere mit PIN (403 pin_falsch -> PIN-Dialog).
+ * Nichts wird geloescht (storniertAm).
  */
 import { useCallback, useEffect, useState, type JSX } from 'react'
-import type { NachdruckAnfrage, Storno, StornoGrund } from '@core/types'
+import type { NachdruckAnfrage, Spende, Storno, StornoGrund } from '@core/types'
 import { formatChf } from '@core/geld'
 import { formatUhrzeit } from '@core/bon'
-import { ApiFehler, api, fehlerMeldung, type LetzterVerkauf } from '../api'
+import { ApiFehler, api, fehlerMeldung, type LetzteSpende, type LetzterVerkauf } from '../api'
 import { STORNO_GRUND_NAME, ZAHLART_NAME } from '../bezahlen'
+import { SPENDE_TYP_NAME, indexOhnePin, rueckgeldSpendeMoeglich, spendeBetragText } from '../spende'
 import { PinDialog } from './PinDialog'
 import { Popup } from './Popup'
+import { RueckgeldSpendeFrage } from './RueckgeldSpende'
 
 interface Props {
   onZurueck: () => void
   /** meldet einen erfolgreichen Storno (damit der Banner im Verkauf den stornierten Beleg anzeigt) */
   onStorniert?: (storno: Storno) => void
+  /** meldet eine erfasste oder stornierte Spende (damit der Banner im Verkauf nachzieht) */
+  onSpendeGeaendert?: (spende: Spende) => void
 }
 
-type Dialog = { art: 'grund'; eintrag: LetzterVerkauf; mitPin: boolean } | { art: 'pin'; eintrag: LetzterVerkauf; grund: StornoGrund } | null
+type Dialog =
+  | { art: 'grund'; eintrag: LetzterVerkauf; mitPin: boolean }
+  | { art: 'pin'; eintrag: LetzterVerkauf; grund: StornoGrund }
+  | { art: 'spende_frage'; eintrag: LetzterVerkauf }
+  | { art: 'spende_storno'; spende: LetzteSpende }
+  | { art: 'spende_pin'; spende: LetzteSpende }
+  | null
 
 const GRUENDE: StornoGrund[] = ['tippfehler', 'ausverkauft', 'abgesprungen']
 
-export function LetzteVerkaeufe({ onZurueck, onStorniert }: Props): JSX.Element {
+export function LetzteVerkaeufe({ onZurueck, onStorniert, onSpendeGeaendert }: Props): JSX.Element {
   const [liste, setListe] = useState<LetzterVerkauf[]>([])
+  const [spenden, setSpenden] = useState<LetzteSpende[]>([])
   const [meldung, setMeldung] = useState<{ text: string; art: 'ok' | 'fehler' } | null>(null)
   const [dialog, setDialog] = useState<Dialog>(null)
   const [beschaeftigt, setBeschaeftigt] = useState(false)
@@ -32,6 +48,11 @@ export function LetzteVerkaeufe({ onZurueck, onStorniert }: Props): JSX.Element 
       setListe(await api.letzteVerkaeufe(20))
     } catch (e) {
       setMeldung({ text: fehlerMeldung(e), art: 'fehler' })
+    }
+    try {
+      setSpenden(await api.spendenLetzte(20))
+    } catch {
+      /* alter Server ohne Spenden-Route: Abschnitt bleibt leer */
     }
   }, [])
 
@@ -79,6 +100,31 @@ export function LetzteVerkaeufe({ onZurueck, onStorniert }: Props): JSX.Element 
     }
   }
 
+  /** Spende stornieren: zuerst ohne PIN; verlangt der Server eine PIN (403 pin_falsch), PIN-Dialog nachschieben. */
+  const spendeStornieren = async (spende: LetzteSpende, pin?: string): Promise<void> => {
+    if (beschaeftigt) return
+    setBeschaeftigt(true)
+    setDialog(null)
+    try {
+      const storniert = await api.spendeStorno(spende.id, pin)
+      setMeldung({ text: `Spende ${spendeBetragText(spende)} storniert. Das Geld bleibt physisch in der Kasse, der Soll-Bestand sinkt.`, art: 'ok' })
+      onSpendeGeaendert?.(storniert)
+      await laden()
+    } catch (e) {
+      if (e instanceof ApiFehler && (e.fehler === 'pin_falsch' || e.fehler === 'pin_noetig')) {
+        if (pin === undefined) setDialog({ art: 'spende_pin', spende })
+        else setMeldung({ text: 'PIN falsch – Storno abgelehnt.', art: 'fehler' })
+      } else {
+        setMeldung({ text: fehlerMeldung(e), art: 'fehler' })
+        await laden()
+      }
+    } finally {
+      setBeschaeftigt(false)
+    }
+  }
+
+  const spendeOhnePin = indexOhnePin(spenden)
+
   return (
     <main className="seite seite-liste">
       <div className="seite-kopf">
@@ -110,6 +156,7 @@ export function LetzteVerkaeufe({ onZurueck, onStorniert }: Props): JSX.Element 
               <th className="rechts">Total CHF</th>
               <th>Positionen</th>
               <th>Status</th>
+              <th>Spende</th>
               <th>Nachdruck</th>
               <th>Storno</th>
             </tr>
@@ -118,6 +165,8 @@ export function LetzteVerkaeufe({ onZurueck, onStorniert }: Props): JSX.Element 
             {liste.map((e, i) => {
               const storniert = e.storno !== null || e.verkauf.storniertAm !== null
               const istLetzter = i === 0
+              const spende = e.spende ?? null
+              const spendeErfasst = spende !== null && spende.storniertAm === null
               return (
                 <tr key={e.verkauf.id} className={storniert ? 'zeile-storniert' : ''}>
                   <td className="zahl">{e.verkauf.belegnr}</td>
@@ -131,6 +180,15 @@ export function LetzteVerkaeufe({ onZurueck, onStorniert }: Props): JSX.Element 
                     ) : (
                       <span className="marke marke-ok">ok</span>
                     )}
+                  </td>
+                  <td className="spalte-spende">
+                    {spendeErfasst && spende !== null ? (
+                      <span className="marke marke-spende zahl">Spende CHF {formatChf(spende.betragChfRappen)}</span>
+                    ) : rueckgeldSpendeMoeglich(e.verkauf, e.zahlung, storniert, spende) ? (
+                      <button type="button" className="knopf knopf-neutral knopf-klein" disabled={beschaeftigt} onClick={() => setDialog({ art: 'spende_frage', eintrag: e })}>
+                        Rückgeld als Spende
+                      </button>
+                    ) : null}
                   </td>
                   <td>
                     <div className="knopfgruppe">
@@ -160,8 +218,54 @@ export function LetzteVerkaeufe({ onZurueck, onStorniert }: Props): JSX.Element 
             })}
             {liste.length === 0 ? (
               <tr>
-                <td colSpan={8} className="tabelle-leer">
+                <td colSpan={9} className="tabelle-leer">
                   Noch keine Verkäufe.
+                </td>
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
+
+        <h2 className="spenden-titel">Letzte Spenden</h2>
+        <table className="tabelle tabelle-spenden">
+          <thead>
+            <tr>
+              <th>Zeit</th>
+              <th>Typ</th>
+              <th className="rechts">Betrag</th>
+              <th>Beleg</th>
+              <th>Status</th>
+              <th>Storno</th>
+            </tr>
+          </thead>
+          <tbody>
+            {spenden.map((s, i) => {
+              const storniert = s.storniertAm !== null
+              const ohnePin = i === spendeOhnePin
+              return (
+                <tr key={s.id} className={storniert ? 'zeile-storniert' : ''}>
+                  <td className="zahl">{formatUhrzeit(s.zeit)}</td>
+                  <td>{SPENDE_TYP_NAME[s.typ]}</td>
+                  <td className="rechts zahl">{spendeBetragText(s)}</td>
+                  <td className="zahl">{s.belegnr ?? '– (ohne Kauf)'}</td>
+                  <td>{storniert ? <span className="marke marke-storno">STORNIERT</span> : <span className="marke marke-ok">ok</span>}</td>
+                  <td>
+                    <button
+                      type="button"
+                      className="knopf knopf-gefahr knopf-klein"
+                      disabled={storniert || beschaeftigt}
+                      onClick={() => setDialog({ art: 'spende_storno', spende: s })}
+                    >
+                      Stornieren{ohnePin || storniert ? '' : ' (PIN)'}
+                    </button>
+                  </td>
+                </tr>
+              )
+            })}
+            {spenden.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="tabelle-leer">
+                  Noch keine separaten Spenden.
                 </td>
               </tr>
             ) : null}
@@ -201,6 +305,44 @@ export function LetzteVerkaeufe({ onZurueck, onStorniert }: Props): JSX.Element 
           titel={`PIN für Storno ${dialog.eintrag.verkauf.belegnr}`}
           onAbbrechen={() => setDialog(null)}
           onOk={(pin) => void stornieren(dialog.eintrag, dialog.grund, pin)}
+        />
+      ) : null}
+
+      {dialog?.art === 'spende_frage' ? (
+        <RueckgeldSpendeFrage
+          verkauf={dialog.eintrag.verkauf}
+          zahlung={dialog.eintrag.zahlung}
+          onAbbrechen={() => setDialog(null)}
+          onErfasst={(spende) => {
+            setDialog(null)
+            setMeldung({ text: `Spende CHF ${formatChf(spende.betragChfRappen)} zu Beleg ${dialog.eintrag.verkauf.belegnr} erfasst.`, art: 'ok' })
+            onSpendeGeaendert?.(spende)
+            void laden()
+          }}
+        />
+      ) : null}
+
+      {dialog?.art === 'spende_storno' ? (
+        <Popup
+          titel="Spende stornieren?"
+          art="frage"
+          knoepfe={[
+            { text: 'Abbrechen', art: 'neutral', onClick: () => setDialog(null) },
+            { text: 'Ja, stornieren', art: 'gefahr', onClick: () => void spendeStornieren(dialog.spende) }
+          ]}
+        >
+          <p>
+            Spende {spendeBetragText(dialog.spende)} ({SPENDE_TYP_NAME[dialog.spende.typ]}
+            {dialog.spende.belegnr !== null ? `, Beleg ${dialog.spende.belegnr}` : ', ohne Kauf'}) von {formatUhrzeit(dialog.spende.zeit)} wird storniert (Tippfehler). Sie zählt dann nicht mehr im Abschluss.
+          </p>
+        </Popup>
+      ) : null}
+
+      {dialog?.art === 'spende_pin' ? (
+        <PinDialog
+          titel="PIN für Storno der Spende"
+          onAbbrechen={() => setDialog(null)}
+          onOk={(pin) => void spendeStornieren(dialog.spende, pin)}
         />
       ) : null}
     </main>
