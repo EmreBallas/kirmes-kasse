@@ -6,7 +6,14 @@ import type { AbschlussBericht, Kassentag } from '@core/types'
 import { formatChf, formatEur, parseBetrag } from '@core/geld'
 import { formatDatum } from '@core/bon'
 import { api, fehlerMeldung } from '../api'
+import { AbschlussPdf } from './AbschlussPdf'
 import { Popup } from './Popup'
+
+/** Abfrage des PDF-Pfads nach dem Abschluss: alle 1 s, hoechstens 20 s. */
+const PDF_ABFRAGE_MS = 1000
+const PDF_ABFRAGEN_MAX = 20
+
+type PdfZustand = { art: 'wartet' } | { art: 'bereit'; pfad: string } | { art: 'unbekannt' }
 
 interface Props {
   kassentag: Kassentag
@@ -39,6 +46,48 @@ export function Abschluss({ kassentag, onFertig, onZurueck }: Props): JSX.Elemen
   const [fertig, setFertig] = useState<AbschlussBericht | null>(null)
   const [nachdruckMeldung, setNachdruckMeldung] = useState<{ text: string; art: 'ok' | 'fehler' } | null>(null)
   const [nachdruckLaeuft, setNachdruckLaeuft] = useState(false)
+  const [pdf, setPdf] = useState<PdfZustand>({ art: 'wartet' })
+
+  /**
+   * Nach dem Abschluss schreibt der Main die PDF im Hintergrund und der Server merkt den Pfad am
+   * Kassentag. Hier wird er alle 1 s abgefragt (max. 20 s), damit der Kassier sieht, wo die Datei liegt.
+   */
+  useEffect(() => {
+    if (fertig === null) return
+    let aktiv = true
+    let versuche = 0
+    let laeuft = false
+    const timer = setInterval(() => {
+      if (laeuft) return
+      versuche += 1
+      laeuft = true
+      api
+        .kassentag(kassentag.id)
+        .then((k) => {
+          if (!aktiv) return
+          if (k.pdfPfad !== null) {
+            setPdf({ art: 'bereit', pfad: k.pdfPfad })
+            clearInterval(timer)
+          } else if (versuche >= PDF_ABFRAGEN_MAX) {
+            setPdf({ art: 'unbekannt' })
+            clearInterval(timer)
+          }
+        })
+        .catch(() => {
+          if (aktiv && versuche >= PDF_ABFRAGEN_MAX) {
+            setPdf({ art: 'unbekannt' })
+            clearInterval(timer)
+          }
+        })
+        .finally(() => {
+          laeuft = false
+        })
+    }, PDF_ABFRAGE_MS)
+    return () => {
+      aktiv = false
+      clearInterval(timer)
+    }
+  }, [fertig, kassentag.id])
 
   /** Nachdruck des Abschluss-Bons, z. B. nach Druckerausfall beim Abschluss (Testfall 32). */
   const nachdrucken = async (): Promise<void> => {
@@ -100,8 +149,15 @@ export function Abschluss({ kassentag, onFertig, onZurueck }: Props): JSX.Elemen
         <div className="karte karte-ok abschluss-fertig">
           <h1>Abgeschlossen</h1>
           <p>
-            Kassentag {formatDatum(fertig.datum)} ({fertig.kassier}) ist abgeschlossen. Abschluss-Bon und PDF werden erstellt.
+            Kassentag {formatDatum(fertig.datum)} ({fertig.kassier}) ist abgeschlossen. Der Abschluss-Bon wird gedruckt.
           </p>
+          {pdf.art === 'unbekannt' ? (
+            <div className="abschluss-pdf" role="status">
+              <span>Abschluss-PDF noch nicht bestätigt. Sie erscheint im Archivordner; der Pfad steht später im Kassenstart.</span>
+            </div>
+          ) : (
+            <AbschlussPdf pfad={pdf.art === 'bereit' ? pdf.pfad : null} />
+          )}
           <Zeile label="Soll CHF" wert={formatChf(fertig.sollChfRappen)} />
           <Zeile label="Ist CHF" wert={formatChf(fertig.istChfRappen ?? 0)} />
           <Zeile label="Differenz CHF" wert={formatChf(fertig.differenzChfRappen ?? 0)} klasse={differenzKlasse(fertig.differenzChfRappen)} />

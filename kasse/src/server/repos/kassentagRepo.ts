@@ -32,11 +32,13 @@ export interface KassentagRepo {
   starte(neu: KassentagNeu): Kassentag
   /** Schliesst einen offenen Kassentag ab; null, wenn er fehlt oder schon abgeschlossen ist. */
   schliesseAb(id: string, a: KassentagAbschlussDaten): Kassentag | null
+  /** Merkt den Pfad der geschriebenen Abschluss-PDF; null, wenn der Kassentag fehlt. */
+  setzePdfPfad(id: string, pfad: string | null): Kassentag | null
 }
 
 const SPALTEN =
   'id, datum, kasse_praefix, kassier, startgeld_chf_rappen, startgeld_eur_cent, geoeffnet_am, abgeschlossen_am, ' +
-  'ist_chf_rappen, ist_eur_cent, differenz_chf_rappen, differenz_eur_cent, bemerkung'
+  'ist_chf_rappen, ist_eur_cent, differenz_chf_rappen, differenz_eur_cent, bemerkung, pdf_pfad'
 
 export function zuKassentag(z: Zeile): Kassentag {
   return {
@@ -52,7 +54,8 @@ export function zuKassentag(z: Zeile): Kassentag {
     istEurCent: zahlOderNull(z, 'ist_eur_cent'),
     differenzChfRappen: zahlOderNull(z, 'differenz_chf_rappen'),
     differenzEurCent: zahlOderNull(z, 'differenz_eur_cent'),
-    bemerkung: textOderNull(z, 'bemerkung')
+    bemerkung: textOderNull(z, 'bemerkung'),
+    pdfPfad: textOderNull(z, 'pdf_pfad')
   }
 }
 
@@ -121,6 +124,11 @@ export function erstelleKassentagRepo(k: RepoKontext): KassentagRepo {
           a.bemerkung,
           id
         )
+      if (r.changes === 0) return null
+      return finde(id)
+    },
+    setzePdfPfad(id, pfad) {
+      const r = db.prepare('UPDATE kassentag SET pdf_pfad = ? WHERE id = ?').run(pfad, id)
       if (r.changes === 0) return null
       return finde(id)
     }

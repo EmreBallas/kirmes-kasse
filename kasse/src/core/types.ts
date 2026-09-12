@@ -61,6 +61,8 @@ export interface Kassentag {
   differenzChfRappen: number | null
   differenzEurCent: number | null
   bemerkung: string | null
+  /** Absoluter Pfad der Abschluss-PDF (Migration 002); null, solange keine geschrieben wurde */
+  pdfPfad: string | null
 }
 
 // ---------------------------------------------------------------- Verkauf

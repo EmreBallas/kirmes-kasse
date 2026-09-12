@@ -524,6 +524,102 @@ describe('Kassentag', () => {
     expect(fehlt.status).toBe(404)
   })
 
+  it('GET /api/kassentag/:id liefert den Kassentag (pdfPfad null), 404 bei unbekannter ID', async () => {
+    u = erstelleTestUmgebung()
+    const id = await u.kassentagStarten(20000)
+    const a = await u.anfrage('GET', `/api/kassentag/${id}`)
+    expect(a.status).toBe(200)
+    expect(a.json).toMatchObject({ id, kassier: 'EB', abgeschlossenAm: null, pdfPfad: null })
+    const fehlt = await u.anfrage('GET', '/api/kassentag/gibtsnicht')
+    expect(fehlt.status).toBe(404)
+    expect(fehlt.json['fehler']).toBe('kassentag_nicht_gefunden')
+    // "aktuell" bleibt die Sammelroute, nicht eine ID
+    const aktuell = await u.anfrage('GET', '/api/kassentag/aktuell')
+    expect(aktuell.status).toBe(200)
+    expect((aktuell.json['kassentag'] as Record<string, unknown>)['id']).toBe(id)
+  })
+
+  it('Abschluss speichert den pdfPfad aus dem (asynchronen) nachAbschluss-Callback, ohne darauf zu warten', async () => {
+    const halter: { freigeben: (() => void) | null } = { freigeben: null }
+    u = erstelleTestUmgebung({
+      deps: {
+        nachAbschluss: () =>
+          new Promise<{ pdfPfad: string }>((erfuellt) => {
+            halter.freigeben = (): void => erfuellt({ pdfPfad: 'C:/x/a.pdf' })
+          })
+      }
+    })
+    const id = await u.kassentagStarten(20000)
+    const abschluss = await u.anfrage('POST', `/api/kassentag/${id}/abschluss`, {
+      istChfRappen: 20000,
+      istEurCent: 0,
+      bemerkung: null
+    })
+    // Antwort kommt, obwohl der Callback noch laeuft
+    expect(abschluss.status).toBe(200)
+    expect(u.repos.kassentag.finde(id)?.pdfPfad).toBeNull()
+    expect(halter.freigeben).not.toBeNull()
+    halter.freigeben?.()
+    await new Promise((r) => setTimeout(r, 20))
+    expect(u.repos.kassentag.finde(id)?.pdfPfad).toBe('C:/x/a.pdf')
+    const einzeln = await u.anfrage('GET', `/api/kassentag/${id}`)
+    expect(einzeln.json['pdfPfad']).toBe('C:/x/a.pdf')
+    const aktuell = await u.anfrage('GET', '/api/kassentag/aktuell')
+    expect((aktuell.json['letzterAbgeschlossener'] as Record<string, unknown>)['pdfPfad']).toBe('C:/x/a.pdf')
+  })
+
+  it('Abschluss: Callback mit Fehler laesst pdfPfad null, loggt und die Antwort bleibt 200', async () => {
+    const meldungen: string[] = []
+    u = erstelleTestUmgebung({
+      deps: {
+        nachAbschluss: () => Promise.reject(new Error('PDF kaputt')),
+        log: (m) => {
+          meldungen.push(m)
+        }
+      }
+    })
+    const id = await u.kassentagStarten(20000)
+    const abschluss = await u.anfrage('POST', `/api/kassentag/${id}/abschluss`, {
+      istChfRappen: 20000,
+      istEurCent: 0,
+      bemerkung: null
+    })
+    expect(abschluss.status).toBe(200)
+    await new Promise((r) => setTimeout(r, 20))
+    expect(u.repos.kassentag.finde(id)?.pdfPfad).toBeNull()
+    expect(meldungen.some((m) => m.includes('PDF kaputt'))).toBe(true)
+  })
+
+  it('POST /api/archiv/oeffnen: 200 mit Callback, 501 nicht_verfuegbar ohne, 500 bei Fehler', async () => {
+    let aufrufe = 0
+    u = erstelleTestUmgebung({
+      deps: {
+        oeffneArchiv: () => {
+          aufrufe += 1
+        }
+      }
+    })
+    const ok = await u.anfrage('POST', '/api/archiv/oeffnen', {})
+    expect(ok.status).toBe(200)
+    expect(ok.json).toEqual({ ok: true })
+    expect(aufrufe).toBe(1)
+    u.aufraeumen()
+
+    u = erstelleTestUmgebung()
+    const ohne = await u.anfrage('POST', '/api/archiv/oeffnen', {})
+    expect(ohne.status).toBe(501)
+    expect(ohne.json).toEqual({ fehler: 'nicht_verfuegbar', meldung: 'Nur in der Kassen-App möglich.' })
+    u.aufraeumen()
+
+    u = erstelleTestUmgebung({
+      deps: { oeffneArchiv: () => Promise.reject(new Error('Explorer fehlt')) }
+    })
+    const kaputt = await u.anfrage('POST', '/api/archiv/oeffnen', {})
+    expect(kaputt.status).toBe(500)
+    expect(kaputt.json['fehler']).toBe('archiv_oeffnen_fehlgeschlagen')
+    expect(String(kaputt.json['meldung'])).toContain('Explorer fehlt')
+  })
+
   it('Abschluss-Bon nachdrucken: 409 vor dem Abschluss, danach Auftrag typ abschluss mit NACHDRUCK', async () => {
     u = erstelleTestUmgebung()
     const id = await u.kassentagStarten(20000)

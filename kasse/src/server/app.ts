@@ -66,6 +66,16 @@ import {
 } from './validierung'
 import { datumLokal, isoLokal, systemUhr, type Uhr } from './zeit'
 
+/** Rückgabe des nachAbschluss-Callbacks: Pfad der geschriebenen Abschluss-PDF (null bei Fehler). */
+export interface AbschlussNachlauf {
+  pdfPfad: string | null
+}
+
+export type AbschlussNachlaufErgebnis =
+  | void
+  | AbschlussNachlauf
+  | Promise<void | AbschlussNachlauf>
+
 export interface AppDeps {
   db: DatabaseSync
   /** Ordner für <druckauftragId>.bin */
@@ -79,8 +89,14 @@ export interface AppDeps {
   druckStatus?: () => Pick<DruckStatus, 'ampel' | 'letzterFehler' | 'transport'>
   /** Wird nach jedem neuen Druckauftrag aufgerufen (z. B. worker.verarbeiteOffene()) */
   nachDruckauftrag?: () => void
-  /** Nach dem Kassenabschluss (PDF, Backup); Fehler werden protokolliert, nicht weitergegeben */
-  nachAbschluss?: (bericht: AbschlussBericht) => void | Promise<void>
+  /**
+   * Nach dem Kassenabschluss (PDF, Backup). Die Abschluss-Route wartet NICHT darauf; liefert der
+   * Callback (auch asynchron) `{ pdfPfad }`, wird der Pfad am Kassentag gespeichert (`pdf_pfad`).
+   * Fehler werden protokolliert, nicht weitergegeben.
+   */
+  nachAbschluss?: (bericht: AbschlussBericht) => AbschlussNachlaufErgebnis
+  /** Öffnet den Archivordner (Electron: shell.openPath); fehlt er, antwortet POST /api/archiv/oeffnen 501 */
+  oeffneArchiv?: () => void | Promise<void>
   /** Backup vor "Testdaten löschen"; liefert den Pfad der Sicherung */
   backup?: () => string | null | Promise<string | null>
   uhr?: Uhr
@@ -95,7 +111,7 @@ export interface KassenApp {
   druck: DruckDienst
 }
 
-type FehlerStatus = 400 | 403 | 404 | 409 | 500
+type FehlerStatus = 400 | 403 | 404 | 409 | 500 | 501
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -142,6 +158,13 @@ async function leseBody(c: Context): Promise<Objekt> {
   return objekt(roh)
 }
 
+/** Liest den PDF-Pfad aus dem Callback-Ergebnis (void, Objekt oder Fremdes) heraus. */
+function pdfPfadAus(r: unknown): string | null {
+  if (typeof r !== 'object' || r === null || !('pdfPfad' in r)) return null
+  const pfad = r.pdfPfad
+  return typeof pfad === 'string' && pfad !== '' ? pfad : null
+}
+
 const ZAHLARTEN = ['bar_chf', 'bar_eur', 'twint', 'helfer'] as const
 const NACHDRUCK_ARTEN = ['alles', 'coupons', 'bon'] as const
 const STORNO_GRUENDE = ['tippfehler', 'ausverkauft', 'abgesprungen'] as const
@@ -163,6 +186,33 @@ export function erstelleKassenApp(deps: AppDeps): KassenApp {
     } catch (e) {
       log(`nachDruckauftrag-Callback fehlgeschlagen: ${fehlerText(e)}`)
     }
+  }
+
+  /**
+   * Startet den nachAbschluss-Callback (PDF, Backup), ohne die Antwort der Abschluss-Route zu verzögern.
+   * Der Callback beginnt sofort (synchroner Teil), sein Ergebnis wird per .then verarbeitet: liefert er
+   * einen PDF-Pfad, wird der am Kassentag gespeichert; der Renderer holt ihn über GET /api/kassentag/:id.
+   */
+  function nachAbschlussStarten(kassentagId: string, b: AbschlussBericht): void {
+    if (deps.nachAbschluss === undefined) return
+    let ergebnis: AbschlussNachlaufErgebnis
+    try {
+      ergebnis = deps.nachAbschluss(b)
+    } catch (e) {
+      log(`nachAbschluss-Callback fehlgeschlagen: ${fehlerText(e)}`)
+      return
+    }
+    void Promise.resolve(ergebnis)
+      .then((r) => {
+        const pfad = pdfPfadAus(r)
+        if (pfad === null) return
+        if (repos.kassentag.setzePdfPfad(kassentagId, pfad) === null) {
+          log(`Abschluss-PDF-Pfad konnte nicht gespeichert werden: Kassentag ${kassentagId} fehlt`)
+        }
+      })
+      .catch((e: unknown) => {
+        log(`nachAbschluss-Callback fehlgeschlagen: ${fehlerText(e)}`)
+      })
   }
 
   // ---------------------------------------------------------------- Middleware
@@ -458,14 +508,17 @@ export function erstelleKassenApp(deps: AppDeps): KassenApp {
       return { abgeschlossen, auftrag }
     })
     druckAnstossen()
-    if (deps.nachAbschluss !== undefined) {
-      try {
-        await deps.nachAbschluss(b)
-      } catch (e) {
-        log(`nachAbschluss-Callback fehlgeschlagen: ${fehlerText(e)}`)
-      }
-    }
+    nachAbschlussStarten(kassentag.id, b)
     return c.json({ ...b, druckauftragId: ergebnis.auftrag.id })
+  })
+
+  // Einzelner Kassentag (der Renderer fragt nach dem Abschluss den PDF-Pfad ab). Nach den
+  // /aktuell-Routen registriert, damit "aktuell" nie als :id gelesen wird.
+  app.get('/api/kassentag/:id', (c) => {
+    const kassentag = repos.kassentag.finde(c.req.param('id'))
+    if (kassentag === null)
+      return fehler(c, 404, 'kassentag_nicht_gefunden', 'Kassentag nicht gefunden.')
+    return c.json(kassentag)
   })
 
   // Nachdruck des Abschluss-Bons (Testfall 32: Abschluss bei Druckerausfall, Nachdruck nach Anstecken).
@@ -720,6 +773,26 @@ export function erstelleKassenApp(deps: AppDeps): KassenApp {
     })
     druckAnstossen()
     return c.json({ druckauftragId: auftrag.id })
+  })
+
+  // ---------------------------------------------------------------- Archiv
+
+  // Archivordner (Abschluss-PDFs) im Explorer öffnen; nur in der Kassen-App (Electron) möglich.
+  app.post('/api/archiv/oeffnen', async (c) => {
+    if (deps.oeffneArchiv === undefined) {
+      return fehler(c, 501, 'nicht_verfuegbar', 'Nur in der Kassen-App möglich.')
+    }
+    try {
+      await deps.oeffneArchiv()
+    } catch (e) {
+      return fehler(
+        c,
+        500,
+        'archiv_oeffnen_fehlgeschlagen',
+        `Archivordner konnte nicht geöffnet werden: ${fehlerText(e)}`
+      )
+    }
+    return c.json({ ok: true })
   })
 
   // ---------------------------------------------------------------- Druck

@@ -16,7 +16,8 @@ const SAMSTAG: Kassentag = {
   istEurCent: null,
   differenzChfRappen: null,
   differenzEurCent: null,
-  bemerkung: null
+  bemerkung: null,
+  pdfPfad: null
 }
 const SONNTAG: Kassentag = { ...SAMSTAG, id: 'tag-so', datum: '2026-09-20', startgeldChfRappen: 30000, startgeldEurCent: 2000 }
 

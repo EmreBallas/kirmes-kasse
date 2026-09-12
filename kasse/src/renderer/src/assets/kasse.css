@@ -740,6 +740,31 @@ textarea.eingabe {
   margin-top: 8px;
 }
 
+/* Abschluss-PDF: Pfad in Monospace, umbrechend; Knopf "Archivordner oeffnen" */
+.abschluss-pdf {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--flaeche);
+  border: 2px solid var(--rand);
+}
+.start-nachdruck .abschluss-pdf {
+  flex-basis: 100%;
+}
+.pdf-pfad {
+  font-family: ui-monospace, Consolas, 'Courier New', monospace;
+  font-size: 16px;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  user-select: text;
+}
+.abschluss-pdf .knopf {
+  margin-top: 0;
+  align-self: flex-start;
+}
+
 /* ---------------------------------------------------------------- Overlays, Popups */
 
 .overlay {

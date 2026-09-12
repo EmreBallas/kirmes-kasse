@@ -11,7 +11,7 @@ export {
 } from './db'
 export type { Migration } from './db'
 export { erstelleApp, erstelleKassenApp } from './app'
-export type { AppDeps, KassenApp } from './app'
+export type { AppDeps, KassenApp, AbschlussNachlauf, AbschlussNachlaufErgebnis } from './app'
 export { erstelleDruckDienst, erstelleDruckQuelle } from './druck'
 export type { DruckDienst, DruckauftragAnfrage } from './druck'
 export {

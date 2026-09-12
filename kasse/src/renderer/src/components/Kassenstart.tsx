@@ -6,6 +6,7 @@ import type { Kassentag } from '@core/types'
 import { formatChf, formatEur, parseBetrag } from '@core/geld'
 import { formatDatum } from '@core/bon'
 import { api, fehlerMeldung, type KassentagAktuellAntwort } from '../api'
+import { AbschlussPdf } from './AbschlussPdf'
 import { useJetzt } from '../hooks'
 import { datumAnzeige, uhrzeitMitSekunden } from '../zeit'
 
@@ -108,6 +109,7 @@ export function Kassenstart({ aktuell, onGestartet, onAbschlussNachholen, onNeuL
               {nachdruckMeldung.text}
             </span>
           ) : null}
+          {typeof letzter.pdfPfad === 'string' ? <AbschlussPdf pfad={letzter.pdfPfad} /> : null}
         </div>
       ) : null}
 

@@ -204,14 +204,23 @@ async function starteLaufzeit(): Promise<Laufzeit> {
     nachDruckauftrag: () => {
       void worker?.verarbeiteOffene()
     },
+    // Läuft nach der Antwort der Abschluss-Route; der Pfad landet über den Server in kassentag.pdf_pfad.
     nachAbschluss: async (bericht) => {
+      let pdfPfad: string | null = null
       try {
-        const pfad = await schreibeAbschlussPdf(bericht, archivOrdner)
-        log(`Abschluss-PDF geschrieben: ${pfad}`)
+        pdfPfad = await schreibeAbschlussPdf(bericht, archivOrdner)
+        log(`Abschluss-PDF geschrieben: ${pdfPfad}`)
       } catch (e) {
         log(`Abschluss-PDF fehlgeschlagen: ${fehlerText(e)}`)
       }
       backupSicher('Abschluss')
+      return { pdfPfad }
+    },
+    oeffneArchiv: async () => {
+      mkdirSync(archivOrdner, { recursive: true })
+      const problem = await shell.openPath(archivOrdner)
+      if (problem !== '') throw new Error(problem)
+      log(`Archivordner geöffnet: ${archivOrdner}`)
     },
     backup: () => backupAusfuehren('Testdaten loeschen'),
     log: (m) => log(`[server] ${m}`)

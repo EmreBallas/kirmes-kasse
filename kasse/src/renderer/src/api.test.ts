@@ -163,6 +163,7 @@ describe('api-Client', () => {
     await api.ausverkauftSetzen('p1', true)
     await api.abschlussNachdruck('k1')
     await api.druckauftrag('d 1')
+    await api.kassentag('k 1')
     expect(aufrufe.map((a) => a.url)).toEqual([
       '/api/produkte?alle=1',
       '/api/produkte',
@@ -171,8 +172,48 @@ describe('api-Client', () => {
       '/api/kassentag/k1/abschluss',
       '/api/produkte/p1/ausverkauft',
       '/api/kassentag/k1/abschluss/nachdruck',
-      '/api/druck/d%201'
+      '/api/druck/d%201',
+      '/api/kassentag/k%201'
     ])
     expect(aufrufe[5]?.init.body).toBe(JSON.stringify({ ausverkauft: true }))
+  })
+
+  it('kassentag(id): GET /api/kassentag/:id liefert den Kassentag mit pdfPfad; 404 als ApiFehler', async () => {
+    const aufrufe: Aufruf[] = []
+    const api = erstelleApi(fakeFetch(200, { id: 'k1', pdfPfad: 'C:/Kasse/data/archiv/Kassenabschluss_2026-09-19_K1.pdf' }, aufrufe), '')
+    const k = await api.kassentag('k1')
+    expect(k.pdfPfad).toBe('C:/Kasse/data/archiv/Kassenabschluss_2026-09-19_K1.pdf')
+    expect(aufrufe[0]?.url).toBe('/api/kassentag/k1')
+    expect(aufrufe[0]?.init.method).toBe('GET')
+    expect(aufrufe[0]?.init.body).toBeUndefined()
+
+    const fehlt = erstelleApi(fakeFetch(404, { fehler: 'kassentag_nicht_gefunden', meldung: 'Kassentag nicht gefunden.' }, []), '')
+    try {
+      await fehlt.kassentag('x')
+      expect.unreachable()
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApiFehler)
+      expect((e as ApiFehler).status).toBe(404)
+      expect((e as ApiFehler).fehler).toBe('kassentag_nicht_gefunden')
+    }
+  })
+
+  it('archivOeffnen(): POST /api/archiv/oeffnen; 501 nicht_verfuegbar als ApiFehler mit Meldung', async () => {
+    const aufrufe: Aufruf[] = []
+    const api = erstelleApi(fakeFetch(200, { ok: true }, aufrufe), '')
+    const antwort = await api.archivOeffnen()
+    expect(antwort.ok).toBe(true)
+    expect(aufrufe[0]?.url).toBe('/api/archiv/oeffnen')
+    expect(aufrufe[0]?.init.method).toBe('POST')
+
+    const browser = erstelleApi(fakeFetch(501, { fehler: 'nicht_verfuegbar', meldung: 'Nur in der Kassen-App möglich.' }, []), '')
+    try {
+      await browser.archivOeffnen()
+      expect.unreachable()
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApiFehler)
+      expect((e as ApiFehler).status).toBe(501)
+      expect(fehlerMeldung(e)).toBe('Nur in der Kassen-App möglich.')
+    }
   })
 })

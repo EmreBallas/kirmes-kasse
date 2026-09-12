@@ -5,7 +5,7 @@
  */
 import { existsSync, mkdirSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { BrowserWindow } from 'electron'
 import { formatDatum, formatDatumUhrzeit } from '@core/bon'
 import { formatChf, formatEur } from '@core/geld'
@@ -163,19 +163,26 @@ ${produktZeilen}
 </html>`
 }
 
-/** Dateiname ohne Kollision: bei bestehender Datei wird ein Zaehler angehaengt. */
+/**
+ * Absoluter Dateiname ohne Kollision: bei bestehender Datei wird ein Zaehler angehaengt
+ * (Kassenabschluss_<datum>_<praefix>.pdf, _2.pdf, _3.pdf ...).
+ */
 export function pdfDateiname(archivOrdner: string, datum: string, praefix: string): string {
+  const ordner = resolve(archivOrdner)
   const basis = `Kassenabschluss_${datum}_${praefix}`
-  let pfad = join(archivOrdner, `${basis}.pdf`)
+  let pfad = join(ordner, `${basis}.pdf`)
   let n = 2
   while (existsSync(pfad)) {
-    pfad = join(archivOrdner, `${basis}_${String(n)}.pdf`)
+    pfad = join(ordner, `${basis}_${String(n)}.pdf`)
     n += 1
   }
   return pfad
 }
 
-/** Rendert das HTML in einem versteckten Fenster und schreibt die A4-PDF; liefert den Pfad. */
+/**
+ * Rendert das HTML in einem versteckten Fenster und schreibt die A4-PDF; liefert den absoluten Pfad
+ * (wird vom Main als { pdfPfad } an den Server zurueckgegeben und am Kassentag gespeichert).
+ */
 export async function schreibeAbschlussPdf(
   bericht: AbschlussBericht,
   archivOrdner: string

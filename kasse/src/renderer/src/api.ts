@@ -203,6 +203,8 @@ export function erstelleApi(
       anfrage<Produkt>('POST', `/api/produkte/${encodeURIComponent(id)}/ausverkauft`, { ausverkauft }),
 
     kassentagAktuell: () => anfrage<KassentagAktuellAntwort>('GET', '/api/kassentag/aktuell'),
+    kassentag: (id) =>
+      anfrage<Kassentag>('GET', `/api/kassentag/${encodeURIComponent(id)}`, undefined, undefined, zeitlimits.status),
     kassentagStart: (daten) => anfrage<Kassentag>('POST', '/api/kassentag/start', daten),
     bericht: () => anfrage<AbschlussBericht>('GET', '/api/kassentag/aktuell/bericht'),
     abschluss: (kassentagId, daten) =>
@@ -239,6 +241,7 @@ export function erstelleApi(
     druckauftrag: (id) =>
       anfrage<Druckauftrag>('GET', `/api/druck/${encodeURIComponent(id)}`, undefined, undefined, zeitlimits.status),
     testdruck: () => anfrage<{ druckauftragId: string }>('POST', '/api/druck/test', {}),
+    archivOeffnen: () => anfrage<{ ok: boolean }>('POST', '/api/archiv/oeffnen', {}),
 
     einstellungen: () => anfrage<Einstellungen>('GET', '/api/einstellungen'),
     einstellungenSpeichern: (daten, pin) => anfrage<Einstellungen>('PUT', '/api/einstellungen', daten, pin),
@@ -263,6 +266,8 @@ export interface KasseApi {
   produktLoeschen(id: string, pin: string): Promise<{ ok: boolean }>
   ausverkauftSetzen(id: string, ausverkauft: boolean): Promise<Produkt>
   kassentagAktuell(): Promise<KassentagAktuellAntwort>
+  /** Einzelner Kassentag (nach dem Abschluss: Abfrage des PDF-Pfads, alle 1 s); 404 kassentag_nicht_gefunden */
+  kassentag(id: string): Promise<Kassentag>
   kassentagStart(daten: KassentagStartAnfrage): Promise<Kassentag>
   bericht(): Promise<AbschlussBericht>
   abschluss(kassentagId: string, daten: KassentagAbschlussAnfrage): Promise<AbschlussBericht>
@@ -275,6 +280,8 @@ export interface KasseApi {
   /** Zustand eines Druckauftrags (Banner verfolgt den eigenen Beleg) */
   druckauftrag(id: string): Promise<Druckauftrag>
   testdruck(): Promise<{ druckauftragId: string }>
+  /** Archivordner (Abschluss-PDFs) im Explorer oeffnen; ausserhalb der Kassen-App 501 nicht_verfuegbar */
+  archivOeffnen(): Promise<{ ok: boolean }>
   einstellungen(): Promise<Einstellungen>
   einstellungenSpeichern(daten: EinstellungenAenderung, pin: string): Promise<Einstellungen>
   pinPruefen(pin: string): Promise<{ ok: boolean }>
