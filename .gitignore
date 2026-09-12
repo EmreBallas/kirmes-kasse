@@ -5,6 +5,8 @@
 *.avif
 *.webp
 *.pdf
+# Ausnahme: die Bildschirmfotos fuer die Anleitung gehoeren ins Repository
+!docs/bilder/*.png
 # Node / Electron
 node_modules/
 kasse/out/
@@ -20,3 +22,11 @@ backup/
 archiv/
 .DS_Store
 Thumbs.db
+# TypeScript-Build-Informationen (kasse/*.tsbuildinfo)
+*.tsbuildinfo
+# Logdateien
+*.log
+# Hinweis: seed.local.json (lokale PIN, Kurs, Druckername) faellt bereits unter *.local.json
+
+# Interne Projektunterlagen (Rohanalyse mit Vereinsfragen), bleiben lokal
+intern/

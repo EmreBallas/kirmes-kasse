@@ -4,7 +4,5 @@ out
 .DS_Store
 .eslintcache
 *.log*
-data-e2e
-data-ui/
-data-ui2/
-data-ui4/
+# Laufzeit- und Testdaten der Kasse (kasse.sqlite, archiv, backup, bytes)
+data*/

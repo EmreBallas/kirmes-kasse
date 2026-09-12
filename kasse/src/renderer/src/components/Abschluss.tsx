@@ -9,6 +9,11 @@ import { api, fehlerMeldung } from '../api'
 import { AbschlussPdf } from './AbschlussPdf'
 import { Popup } from './Popup'
 
+/** Abzugszeile: bei 0 ohne Minuszeichen (sonst stuende dort «− 0.00»). */
+function formatAbzug(rappen: number, zeichen: string): string {
+  return rappen === 0 ? formatChf(0) : `${zeichen}${formatChf(rappen)}`
+}
+
 /** Abfrage des PDF-Pfads nach dem Abschluss: alle 1 s, hoechstens 20 s. */
 const PDF_ABFRAGE_MS = 1000
 const PDF_ABFRAGEN_MAX = 20
@@ -212,13 +217,13 @@ export function Abschluss({ kassentag, onFertig, onZurueck }: Props): JSX.Elemen
               <Zeile label="Bar-Spende CHF" wert={formatChf(bericht.barSpendeChfRappen)} />
               <Zeile label="Bar-Einnahmen EUR (Stück)" wert={`EUR ${formatEur(bericht.barEinnahmenEurCent)}`} />
               <Zeile label="Bar-Einnahmen EUR (CHF-Gegenwert)" wert={formatChf(bericht.barEinnahmenEurChfRappen)} />
-              <Zeile label="Rückgeld aus EUR-Verkäufen" wert={`− ${formatChf(bericht.rueckgeldAusEurRappen)}`} />
+              <Zeile label="Rückgeld aus EUR-Verkäufen" wert={formatAbzug(bericht.rueckgeldAusEurRappen, '− ')} />
               <Zeile label="Bar-Spende EUR (CHF-Gegenwert)" wert={formatChf(bericht.barSpendeEurChfRappen)} />
               <Zeile label="Twint-Umsatz (brutto)" wert={formatChf(bericht.twintUmsatzRappen)} />
               <Zeile label="  davon storniert (bar ausbezahlt)" wert={formatChf(bericht.twintStorniertRappen)} />
               <Zeile label="Twint-Spende" wert={formatChf(bericht.twintSpendeRappen)} />
               <Zeile label={`  davon separat erfasst (${String(bericht.spendenSeparatAnzahl)})`} wert={formatChf(bericht.spendenSeparatChfRappen)} />
-              <Zeile label={`Storni (${String(bericht.storniAnzahl)})`} wert={`− ${formatChf(bericht.storniAuszahlungRappen)}`} />
+              <Zeile label={`Storni (${String(bericht.storniAnzahl)})`} wert={formatAbzug(bericht.storniAuszahlungRappen, '− ')} />
               <Zeile label={`Helferessen (${String(bericht.helferessenStueck)} Stück, entgangen)`} wert={formatChf(bericht.helferessenEntgangenRappen)} />
               <Zeile label="Nachdrucke" wert={String(bericht.nachdrucke)} />
               <Zeile label="Belege" wert={String(bericht.anzahlBelege)} />

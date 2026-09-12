@@ -1,0 +1,53 @@
+# Läuft bei jedem Push eines Tags, der mit v beginnt (zum Beispiel v1.0.0), und baut das Windows-Paket.
+# electron-builder erzeugt laut kasse/electron-builder.yml das Ziel "zip" nach kasse/dist (Name: Kasse-<version>-win.zip);
+# diese Datei wird als Artefakt an ein GitHub-Release gehängt. Kein Code-Signing, keine Secrets ausser dem GITHUB_TOKEN.
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: kasse
+    steps:
+      - name: Quellcode auschecken
+        uses: actions/checkout@v4
+
+      - name: Node einrichten
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: kasse/package-lock.json
+
+      - name: Abhängigkeiten installieren
+        run: npm ci
+
+      - name: Typen prüfen
+        run: npm run typecheck
+
+      - name: Tests ausführen
+        run: npm test
+
+      - name: Anwendung bauen
+        run: npm run build
+
+      - name: Windows-Paket als ZIP packen
+        run: npx electron-builder --win zip --publish never
+
+      - name: Release anlegen und ZIP anhängen
+        uses: softprops/action-gh-release@v2
+        with:
+          files: kasse/dist/*.zip
+          fail_on_unmatched_files: true
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

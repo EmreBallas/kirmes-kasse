@@ -1,0 +1,36 @@
+# Prüft jeden Push und jeden Pull Request auf main: Typen (tsc) und Tests (vitest) der Anwendung im Ordner kasse.
+# Läuft auf windows-latest, weil die Kasse eine Windows-Anwendung ist (Druck über den Windows-Spooler).
+# Node 24, weil die Anwendung node:sqlite ohne Flag braucht; Electron 44 bringt dieselbe Node-Reihe mit.
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: kasse
+    steps:
+      - name: Quellcode auschecken
+        uses: actions/checkout@v4
+
+      - name: Node einrichten
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: kasse/package-lock.json
+
+      - name: Abhängigkeiten installieren
+        run: npm ci
+
+      - name: Typen prüfen
+        run: npm run typecheck
+
+      - name: Tests ausführen
+        run: npm test
