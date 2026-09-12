@@ -1,0 +1,100 @@
+{
+  "_hinweis": "Produktliste 12.9.2026. Preise in Rappen. preis_vorlaeufig=true: vom Auftraggeber noch zu bestaetigen. Gruppe coupon = Abholcoupon, kasse = sofort an der Kasse.",
+  "produkte": [
+    {
+      "name": "Winti Burger",
+      "preis_rappen": 1100,
+      "gruppe": "coupon",
+      "reihenfolge": 1
+    },
+    {
+      "name": "Winti Burger mit Pommes",
+      "preis_rappen": 1500,
+      "gruppe": "coupon",
+      "reihenfolge": 2
+    },
+    {
+      "name": "Lahmacun",
+      "preis_rappen": 500,
+      "gruppe": "coupon",
+      "reihenfolge": 3
+    },
+    {
+      "name": "Gözleme",
+      "preis_rappen": 500,
+      "gruppe": "coupon",
+      "reihenfolge": 4
+    },
+    {
+      "name": "Döner Kebap",
+      "preis_rappen": 1200,
+      "gruppe": "coupon",
+      "reihenfolge": 5
+    },
+    {
+      "name": "Dürüm",
+      "preis_rappen": 1000,
+      "gruppe": "coupon",
+      "reihenfolge": 6,
+      "preis_vorlaeufig": true
+    },
+    {
+      "name": "Adana Dürüm",
+      "preis_rappen": 1200,
+      "gruppe": "coupon",
+      "reihenfolge": 7,
+      "preis_vorlaeufig": true
+    },
+    {
+      "name": "Mocktail",
+      "preis_rappen": 500,
+      "gruppe": "coupon",
+      "reihenfolge": 8
+    },
+    {
+      "name": "Getränk Dose",
+      "preis_rappen": 250,
+      "gruppe": "kasse",
+      "reihenfolge": 9
+    },
+    {
+      "name": "Getränk Flasche",
+      "preis_rappen": 300,
+      "gruppe": "kasse",
+      "reihenfolge": 10
+    },
+    {
+      "name": "Ayran",
+      "preis_rappen": 300,
+      "gruppe": "kasse",
+      "reihenfolge": 11,
+      "preis_vorlaeufig": true
+    },
+    {
+      "name": "Red Bull",
+      "preis_rappen": 300,
+      "gruppe": "kasse",
+      "reihenfolge": 12
+    },
+    {
+      "name": "Wasser still",
+      "preis_rappen": 250,
+      "gruppe": "kasse",
+      "reihenfolge": 13,
+      "preis_vorlaeufig": true
+    },
+    {
+      "name": "Wasser prickelnd",
+      "preis_rappen": 250,
+      "gruppe": "kasse",
+      "reihenfolge": 14,
+      "preis_vorlaeufig": true
+    },
+    {
+      "name": "Kaffee",
+      "preis_rappen": 250,
+      "gruppe": "kasse",
+      "reihenfolge": 15
+    }
+  ]
+}

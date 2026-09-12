@@ -1,0 +1,20 @@
+{
+  "_hinweis": "Vorlaeufige Produktliste vom 12.9.2026 (Auftraggeber). Preise in Rappen; null = Preis noch offen. Gruppe: 'coupon' = Abholcoupon wird gedruckt, 'kasse' = direkt an der Kasse ausgegeben.",
+  "produkte": [
+    { "name": "Winti Burger",            "preis_rappen": 1100, "gruppe": "coupon", "reihenfolge": 1 },
+    { "name": "Winti Burger mit Pommes", "preis_rappen": 1500, "gruppe": "coupon", "reihenfolge": 2 },
+    { "name": "Lahmacun",                "preis_rappen": 500,  "gruppe": "coupon", "reihenfolge": 3 },
+    { "name": "Gözleme",                 "preis_rappen": 500,  "gruppe": "coupon", "reihenfolge": 4 },
+    { "name": "Döner Kebap",             "preis_rappen": 1200, "gruppe": "coupon", "reihenfolge": 5 },
+    { "name": "Dürüm",                   "preis_rappen": null, "gruppe": "coupon", "reihenfolge": 6 },
+    { "name": "Adana Dürüm",             "preis_rappen": null, "gruppe": "coupon", "reihenfolge": 7 },
+    { "name": "Mocktail",                "preis_rappen": 500,  "gruppe": "coupon", "reihenfolge": 8 },
+    { "name": "Getränk Dose",            "preis_rappen": 250,  "gruppe": "kasse",  "reihenfolge": 9 },
+    { "name": "Getränk Flasche",         "preis_rappen": 300,  "gruppe": "kasse",  "reihenfolge": 10 },
+    { "name": "Ayran",                   "preis_rappen": null, "gruppe": "kasse",  "reihenfolge": 11 },
+    { "name": "Red Bull",                "preis_rappen": 300,  "gruppe": "kasse",  "reihenfolge": 12 },
+    { "name": "Wasser still",            "preis_rappen": null, "gruppe": "kasse",  "reihenfolge": 13 },
+    { "name": "Wasser prickelnd",        "preis_rappen": null, "gruppe": "kasse",  "reihenfolge": 14 },
+    { "name": "Kaffee",                  "preis_rappen": 250,  "gruppe": "kasse",  "reihenfolge": 15 }
+  ]
+}

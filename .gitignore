@@ -1,0 +1,22 @@
+# Medien im Projektordner (Fotos, Flyer) gehoeren nicht ins Repository
+*.jpg
+*.jpeg
+*.png
+*.avif
+*.webp
+*.pdf
+# Node / Electron
+node_modules/
+kasse/out/
+kasse/dist/
+kasse/.vite/
+# lokale Konfiguration und Laufzeitdaten
+*.local.json
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+data/
+backup/
+archiv/
+.DS_Store
+Thumbs.db
