@@ -420,8 +420,9 @@ textarea.eingabe {
   padding: 12px;
   overflow: auto;
 }
-/* Kacheln fuellen die Hoehe: bei wenigen Produkten hohe Kacheln, bis 30 Produkte (5 Spalten x 6 Zeilen
-   zu 88 px) ohne Scrollen auf 1366x768. Mehr Zeilen als Platz -> die Spalte scrollt. */
+/* Spaltenzahl und Zeilenhoehe setzt Produktraster.tsx als Inline-Style (waehleRaster, aus der gemessenen
+   Groesse des Rasters). Die auto-fill/1fr-Regeln hier sind nur der Fallback bis zur ersten Messung.
+   Mehr Zeilen als Platz -> .verkauf-links scrollt. gap muss zu STANDARD_RASTER.abstand (10 px) passen. */
 .produktraster {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
@@ -474,6 +475,8 @@ textarea.eingabe {
   outline: 3px solid var(--primaer);
   outline-offset: -3px;
 }
+/* Schrift waechst mit der Kachelhoehe (cqh), Obergrenzen halten sie bei 260 px Zeilenhoehe im Rahmen
+   (11cqh von 260 px = 28.6 px -> 26 px; 12cqh = 31.2 px -> 30 px). */
 .kachel-name {
   font-size: clamp(17px, 11cqh, 26px);
   font-weight: 700;

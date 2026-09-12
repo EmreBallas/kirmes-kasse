@@ -6,3 +6,4 @@ out
 *.log*
 data-e2e
 data-ui/
+data-ui2/

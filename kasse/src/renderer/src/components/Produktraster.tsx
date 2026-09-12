@@ -1,10 +1,13 @@
 /**
  * Produktkacheln: Name + Preis, Gruppe als Farbe, Menge im Warenkorb als Badge,
  * Ausverkauft-Toggle als kleiner Schalter auf der Kachel (ohne PIN).
+ * Spaltenzahl und Zeilenhoehe werden aus der gemessenen Rastergroesse berechnet (waehleRaster),
+ * damit die Kacheln auf grossen wie kleinen Bildschirmen ein aehnliches Seitenverhaeltnis haben.
  */
-import type { JSX } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type JSX } from 'react'
 import type { Produkt, Warenkorb } from '@core/types'
 import { formatChf } from '@core/geld'
+import { STANDARD_RASTER, waehleRaster } from '../raster'
 
 interface Props {
   produkte: Produkt[]
@@ -13,7 +16,50 @@ interface Props {
   onAusverkauft: (produkt: Produkt, ausverkauft: boolean) => void
 }
 
-export function Produktraster({ produkte, warenkorb, onAntippen, onAusverkauft }: Props): JSX.Element {
+interface Mass {
+  breite: number
+  hoehe: number
+}
+
+/**
+ * Beobachtet Breite/Hoehe eines Elements per ResizeObserver; null, bis die erste Messung vorliegt.
+ * Callback-Ref, weil das Rasterelement erst erscheint, wenn Produkte geladen sind.
+ */
+function useMass<T extends HTMLElement>(): [(el: T | null) => void, Mass | null] {
+  const beobachter = useRef<ResizeObserver | null>(null)
+  const [mass, setMass] = useState<Mass | null>(null)
+
+  const ref = useCallback((el: T | null): void => {
+    beobachter.current?.disconnect()
+    beobachter.current = null
+    if (el === null || typeof ResizeObserver === 'undefined') return
+    const melden = (breite: number, hoehe: number): void => {
+      setMass((alt) =>
+        alt !== null && alt.breite === breite && alt.hoehe === hoehe ? alt : { breite, hoehe }
+      )
+    }
+    const b = new ResizeObserver((eintraege) => {
+      const e = eintraege[0]
+      if (e !== undefined) melden(Math.floor(e.contentRect.width), Math.floor(e.contentRect.height))
+    })
+    b.observe(el)
+    beobachter.current = b
+    melden(Math.floor(el.clientWidth), Math.floor(el.clientHeight))
+  }, [])
+
+  useEffect(() => () => beobachter.current?.disconnect(), [])
+
+  return [ref, mass]
+}
+
+export function Produktraster({
+  produkte,
+  warenkorb,
+  onAntippen,
+  onAusverkauft
+}: Props): JSX.Element {
+  const [rasterRef, mass] = useMass<HTMLDivElement>()
+
   const mengen = new Map<string, number>()
   for (const z of warenkorb.zeilen) mengen.set(z.produktId, z.anzahl)
 
@@ -29,12 +75,26 @@ export function Produktraster({ produkte, warenkorb, onAntippen, onAusverkauft }
     )
   }
 
+  // Bis zur ersten Messung gelten die CSS-Regeln (auto-fill) als Fallback.
+  let stil: CSSProperties | undefined
+  if (mass !== null && mass.breite > 0 && mass.hoehe > 0) {
+    const r = waehleRaster(sichtbar.length, mass.breite, mass.hoehe, STANDARD_RASTER)
+    stil = {
+      gridTemplateColumns: `repeat(${r.spalten}, minmax(0, 1fr))`,
+      gridAutoRows: `${r.zeilenHoehe}px`,
+      alignContent: 'start'
+    }
+  }
+
   return (
-    <div className="produktraster">
+    <div className="produktraster" ref={rasterRef} style={stil}>
       {sichtbar.map((p) => {
         const menge = mengen.get(p.id) ?? 0
         return (
-          <div key={p.id} className={`kachel kachel-${p.gruppe}${p.ausverkauft ? ' kachel-ausverkauft' : ''}`}>
+          <div
+            key={p.id}
+            className={`kachel kachel-${p.gruppe}${p.ausverkauft ? ' kachel-ausverkauft' : ''}`}
+          >
             <button
               type="button"
               className="kachel-flaeche"
