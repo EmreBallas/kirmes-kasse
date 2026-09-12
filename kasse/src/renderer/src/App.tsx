@@ -3,9 +3,10 @@
  * Kein Router: ansicht = 'start' | 'verkauf' | 'letzte' | 'abschluss' | 'verwaltung' | 'einstellungen'.
  */
 import { useCallback, useEffect, useState, type JSX } from 'react'
-import type { Einstellungen as EinstellungenTyp, Kassentag, VerkaufAntwort, Warenkorb } from '@core/types'
+import type { Einstellungen as EinstellungenTyp, Kassentag, Warenkorb } from '@core/types'
 import { leererWarenkorb } from '@core/warenkorb'
 import { api, type KassentagAktuellAntwort } from './api'
+import { bannerAusAntwort, bannerNachStorno, type BannerZustand } from './bezahlen'
 import { useStatus, useWarenkorbSicherung } from './hooks'
 import { Abschluss } from './components/Abschluss'
 import { Einstellungen } from './components/Einstellungen'
@@ -25,7 +26,7 @@ function App(): JSX.Element {
   const [einstellungen, setEinstellungen] = useState<EinstellungenTyp | null>(null)
   const [warenkorb, setWarenkorb] = useState<Warenkorb>(leererWarenkorb)
   const [entwurfGeladen, setEntwurfGeladen] = useState(false)
-  const [banner, setBanner] = useState<VerkaufAntwort | null>(null)
+  const [banner, setBanner] = useState<BannerZustand | null>(null)
   const [abschlussTag, setAbschlussTag] = useState<Kassentag | null>(null)
   const [pinFuer, setPinFuer] = useState<Geschuetzt | null>(null)
   const [pin, setPin] = useState<string | null>(null)
@@ -34,12 +35,24 @@ function App(): JSX.Element {
 
   useWarenkorbSicherung(warenkorb, entwurfGeladen)
 
+  /** Beenden ist nur im Electron-Fenster moeglich (Plan B im Browser hat keine Bruecke). */
+  const beendenMoeglich = window.kasse !== undefined
+
+  /**
+   * Beenden hinter PIN: beide Wege (Knopf "Beenden" in der Kopfzeile und IPC von Electron bei
+   * Ctrl+Shift+Q / Alt+F4 / Fenster schliessen) oeffnen denselben PIN-Dialog ueber diese Funktion.
+   */
+  const beendenAnfragen = useCallback((): void => {
+    if (!beendenMoeglich) return
+    setBeendenAnfrage(true)
+  }, [beendenMoeglich])
+
   // Electron (preload) bittet um die Beenden-PIN: Ctrl+Shift+Q oder Alt+F4/Fenster schliessen.
   useEffect(() => {
     const bruecke = window.kasse
     if (bruecke === undefined) return undefined
-    return bruecke.onBeendenAnfragen(() => setBeendenAnfrage(true))
-  }, [])
+    return bruecke.onBeendenAnfragen(beendenAnfragen)
+  }, [beendenAnfragen])
 
   /**
    * Laedt Kassentag-Status und entscheidet zwischen Kassenstart und Verkauf. Ein offener Vortag
@@ -165,7 +178,12 @@ function App(): JSX.Element {
       )
 
     case 'letzte':
-      return <LetzteVerkaeufe onZurueck={zumVerkauf} />
+      return (
+        <LetzteVerkaeufe
+          onZurueck={zumVerkauf}
+          onStorniert={(storno) => setBanner((alt) => bannerNachStorno(alt, storno))}
+        />
+      )
 
     case 'abschluss': {
       const tag = abschlussTag ?? kassentag
@@ -217,7 +235,8 @@ function App(): JSX.Element {
           warenkorb={warenkorb}
           onWarenkorb={setWarenkorb}
           banner={banner}
-          onBanner={setBanner}
+          onBanner={(antwort) => setBanner(bannerAusAntwort(antwort))}
+          onBeenden={beendenMoeglich ? beendenAnfragen : undefined}
           onLetzte={() => setAnsicht('letzte')}
           onAbschluss={() => {
             setAbschlussTag(null)

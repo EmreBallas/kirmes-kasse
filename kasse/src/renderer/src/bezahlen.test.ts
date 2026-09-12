@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { berechneZahlung } from '@core/zahlung'
-import type { Position, Warenkorb } from '@core/types'
+import type { Position, Storno, VerkaufAntwort, Warenkorb } from '@core/types'
 import {
   DRUCK_WARTEZEIT_MS,
+  bannerAusAntwort,
   bannerDruckProblem,
+  bannerNachStorno,
   baueVerkaufAnfrage,
   bestaetigungsWarnung,
   druckVerlauf,
@@ -11,7 +13,8 @@ import {
   handschreibListe,
   listeAlsText,
   neueVerkaufsId,
-  pruefeVorSenden
+  pruefeVorSenden,
+  stornoBannerText
 } from './bezahlen'
 
 const warenkorb: Warenkorb = {
@@ -106,6 +109,40 @@ describe('druckVerlauf / bannerDruckProblem', () => {
     expect(bannerDruckProblem('unbekannt', 'pruefen')).toBe(true)
     expect(bannerDruckProblem('unbekannt', 'ok')).toBe(false)
     expect(bannerDruckProblem('unbekannt', null)).toBe(false)
+  })
+})
+
+describe('Banner nach Storno', () => {
+  const antwort: VerkaufAntwort = {
+    verkauf: { id: 'v4', kassentagId: 'k1', belegnr: 'K1-0004', zeit: '2026-09-19T14:32:00.000Z', zahlart: 'bar_chf', totalRappen: 250, storniertAm: null, stornoId: null },
+    zahlung: { verkaufId: 'v4', waehrung: 'CHF', kursX10000: null, gegeben: 500, gegebenChfRappen: 500, rueckgeldChfRappen: 250, spendeChfRappen: 0, spendeTyp: null },
+    positionen: [],
+    sofortAusgeben: [],
+    druckauftragId: 'd4',
+    bereitsVorhanden: false
+  }
+  const storno: Storno = { id: 's1', verkaufId: 'v4', kassentagId: 'k1', zeit: '2026-09-19T14:40:00.000Z', grund: 'tippfehler', auszahlungChfRappen: 250, mitPin: false }
+
+  it('bannerAusAntwort: frische Antwort ohne Storno, null bleibt null', () => {
+    expect(bannerAusAntwort(null)).toBeNull()
+    expect(bannerAusAntwort(antwort)).toEqual({ antwort, storno: null })
+  })
+
+  it('Storno des Banner-Belegs wird gemerkt', () => {
+    const banner = bannerAusAntwort(antwort)
+    expect(bannerNachStorno(banner, storno)).toEqual({ antwort, storno })
+  })
+
+  it('Storno eines anderen Belegs laesst das Banner unveraendert; ohne Banner bleibt es null', () => {
+    const banner = bannerAusAntwort(antwort)
+    const anderer: Storno = { ...storno, id: 's2', verkaufId: 'v3' }
+    expect(bannerNachStorno(banner, anderer)).toBe(banner)
+    expect(bannerNachStorno(null, storno)).toBeNull()
+  })
+
+  it('Storno-Zeile mit und ohne Auszahlung (Helfer / 0)', () => {
+    expect(stornoBannerText('K1-0004', storno)).toBe('Beleg K1-0004 storniert · Auszahlung CHF 2.50')
+    expect(stornoBannerText('K1-0005', { auszahlungChfRappen: 0 })).toBe('Beleg K1-0005 storniert')
   })
 })
 

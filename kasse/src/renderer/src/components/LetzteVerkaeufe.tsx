@@ -3,7 +3,7 @@
  * Letzter Beleg ohne PIN, aeltere mit PIN-Dialog; stornierte Belege ohne Nachdruck.
  */
 import { useCallback, useEffect, useState, type JSX } from 'react'
-import type { NachdruckAnfrage, StornoGrund } from '@core/types'
+import type { NachdruckAnfrage, Storno, StornoGrund } from '@core/types'
 import { formatChf } from '@core/geld'
 import { formatUhrzeit } from '@core/bon'
 import { ApiFehler, api, fehlerMeldung, type LetzterVerkauf } from '../api'
@@ -13,13 +13,15 @@ import { Popup } from './Popup'
 
 interface Props {
   onZurueck: () => void
+  /** meldet einen erfolgreichen Storno (damit der Banner im Verkauf den stornierten Beleg anzeigt) */
+  onStorniert?: (storno: Storno) => void
 }
 
 type Dialog = { art: 'grund'; eintrag: LetzterVerkauf; mitPin: boolean } | { art: 'pin'; eintrag: LetzterVerkauf; grund: StornoGrund } | null
 
 const GRUENDE: StornoGrund[] = ['tippfehler', 'ausverkauft', 'abgesprungen']
 
-export function LetzteVerkaeufe({ onZurueck }: Props): JSX.Element {
+export function LetzteVerkaeufe({ onZurueck, onStorniert }: Props): JSX.Element {
   const [liste, setListe] = useState<LetzterVerkauf[]>([])
   const [meldung, setMeldung] = useState<{ text: string; art: 'ok' | 'fehler' } | null>(null)
   const [dialog, setDialog] = useState<Dialog>(null)
@@ -60,6 +62,7 @@ export function LetzteVerkaeufe({ onZurueck }: Props): JSX.Element {
         text: `Beleg ${eintrag.verkauf.belegnr} storniert (${STORNO_GRUND_NAME[grund]}). Auszahlung CHF ${formatChf(storno.auszahlungChfRappen)}${storno.auszahlungChfRappen > 0 ? ' – Schublade öffnet' : ''}.`,
         art: 'ok'
       })
+      onStorniert?.(storno)
       await laden()
     } catch (e) {
       if (e instanceof ApiFehler && e.fehler === 'pin_falsch') {

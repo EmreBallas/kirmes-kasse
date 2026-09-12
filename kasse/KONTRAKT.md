@@ -6,7 +6,7 @@ Verbindliche Schnittstellen für alle, die parallel an der Kasse bauen. Fachlich
 
 - TypeScript strict, keine `any`. Deutsche Fachbegriffe im Code (`verkauf`, `rueckgeld`, `kassentag`), englische Technik (`repo`, `router`, `worker`).
 - Geld: CHF in ganzen Rappen, EUR in ganzen Cent, Kurs als `kursX10000`. Nie Fliesskomma für Geld.
-- Nichts wird gelöscht. Storno ist eine Gegenbuchung. Produkte werden deaktiviert.
+- Nichts wird gelöscht. Storno ist eine Gegenbuchung. Produkte werden deaktiviert (einzige Ausnahme: ein Produkt ohne einzige Verkaufsposition darf per `DELETE /api/produkte/:id` entfernt werden).
 - Verkauf wird gespeichert (Commit), bevor irgendetwas gedruckt wird.
 - `package.json` und `node_modules` nicht anfassen; fehlende Abhängigkeiten im Ergebnis melden.
 - Jedes Modul bringt vitest-Tests mit (`*.test.ts` neben dem Code). `npx vitest run src/<modul>` muss grün sein.
@@ -36,7 +36,7 @@ resources/     produkte-seed.json, seed.default.json
 - `abschluss.ts`: `berechneAbschluss(input): AbschlussBericht` mit `input = { kassentag, verkaeufe, positionen, zahlungen, storni (des Kassentags des Stornos!), nachdrucke: number, istChfRappen, istEurCent }`. Formeln exakt wie Roadmap Abschnitt 4 (Geldsummen brutto, Storni nur als Gegenbuchung, Soll CHF = Startgeld + Bar-CHF + Bar-Spende-CHF − Rückgeld aus EUR − Storno-Auszahlungen; Soll EUR = Startgeld EUR + Σ gegeben EUR). **Stückzahlen** (Produktzeilen verkauft/helfer und Helferessen-Stück/entgangener Umsatz) zählen nur Verkäufe, die nicht am selben Kassentag storniert wurden (Testfall 28: Storno Helfer-Beleg → Helferessen-Stück sinken). Kontrollfälle aus der Roadmap als Tests.
 - `bon.ts`: `bonModellVerkauf(verkauf, positionen, zahlung, opts: { nachdruck: 'alles'|'coupons'|'bon'|null }): DruckModell`; `bonModellAbschluss(bericht): DruckModell`; `bonModellTest(): DruckModell`. Layout (80 mm, 48 Zeichen Font A):
   - Coupon je Position der Gruppe `coupon`: Zeile 1 `"{anzahl}x"` dreifach, Zeile 2 Name doppelt, Leerzeile, `"Sa 19.09.2026  14:32"`, `"{belegnr}   Coupon {n}/{m}"`; bei Nachdruck zusätzlich `"NACHDRUCK"` doppelt fett als erste Zeile. Kein Standname.
-  - Bon 1: Positionszeilen `{anzahl:>3} {name:<34}{betrag:>10}`, Trennlinie 48 `-`, `TOTAL CHF` / `Gegeben CHF` (bei EUR `Gegeben EUR` und `Kurs 0.90`) / `RÜCKGELD CHF` doppelt; bei Twint statt Rückgeld `Spende CHF` (nur wenn > 0); bei Helfer Zeile `HELFER`; Leerzeile; Fusszeile rechtsbündig `"{belegnr}  {HH:MM}"`. Kein Logo, kein Datum im Kopf.
+  - Bon 1: Positionszeilen `{anzahl:>3} {name:<34}{betrag:>10}`, Trennlinie 48 `-`, `TOTAL CHF` / `Gegeben CHF` (bei EUR `Gegeben EUR` und `Kurs 0.90`) / `RÜCKGELD CHF` doppelt; bei Twint `Gegeben CHF - TWINT` und statt Rückgeld `Spende CHF - TWINT` (nur wenn > 0), Zeilen bleiben 48 Zeichen; bei Helfer Zeile `HELFER`; Leerzeile; Fusszeile rechtsbündig `"{belegnr}  {HH:MM}"`. Kein Logo, kein Datum im Kopf.
   - Schublade: `schublade = zahlart in (bar_chf, bar_eur)` beim Beleg; beim Nachdruck nie; beim Storno separater Auftrag `typ = schublade` mit leerem Dokument.
   - Abschluss-Bon: alle Zeilen des Berichts, Stück je Produkt, Kassier, Unterschriftslinie. `bonModellAbschluss(bericht, { nachdruck: true })` setzt `"NACHDRUCK"` doppelt fett als erste Zeile (Nachdruck des Abschluss-Bons).
 
@@ -93,6 +93,7 @@ CREATE TABLE warenkorb_entwurf (id INTEGER PRIMARY KEY CHECK(id = 1), json TEXT 
 | GET | `/api/produkte?alle=1` | `Produkt[]` (ohne `alle`: nur aktive) |
 | POST | `/api/produkte` (PIN) | `Partial<Produkt>` -> `Produkt` |
 | PUT | `/api/produkte/:id` (PIN) | `Partial<Produkt>` -> `Produkt` |
+| DELETE | `/api/produkte/:id` (PIN) | -> `{ ok: true }`; löscht das Produkt nur, wenn keine Position darauf verweist, sonst 409 `produkt_hat_verkaeufe` („Produkt wurde bereits verkauft und kann nur deaktiviert werden.“); 404 `produkt_nicht_gefunden`; danach Reihenfolge normalisiert |
 | POST | `/api/produkte/:id/ausverkauft` | `{ ausverkauft: boolean }` -> `Produkt` |
 | GET | `/api/kassentag/aktuell` | `{ kassentag, vortagOffen, vorschlagStartgeldChfRappen, letzterAbgeschlossener }` (`letzterAbgeschlossener: Kassentag \| null` für den Nachdruck des Abschluss-Bons) |
 | POST | `/api/kassentag/start` | `KassentagStartAnfrage` -> `Kassentag` (409 `kassentag_offen`, wenn offen, auch bei offenem Vortag) |
@@ -111,6 +112,8 @@ CREATE TABLE warenkorb_entwurf (id INTEGER PRIMARY KEY CHECK(id = 1), json TEXT 
 | POST | `/api/testdaten-loeschen` (PIN) | -> `{ ok, backupPfad }` |
 | GET/PUT | `/api/warenkorb-entwurf` | `Warenkorb` |
 | GET | `/*` | statisches Renderer-Build (`out/renderer`), Fallback `index.html` |
+
+- Reihenfolge mit Einfüge-Semantik: `reihenfolge` in POST/PUT ist die Zielposition (1 = ganz oben, Werte ≥ 1, im Repo auf 1..N begrenzt). Bekommt ein Produkt die Position n, rutschen alle anderen Produkte ab Position n um eins nach unten; anschliessend werden alle Produkte (aktive und inaktive) lücken- und doppelfrei auf 1..N durchnummeriert (Sortierung `reihenfolge`, `erstellt_am`). POST ohne `reihenfolge`: ans Ende; PUT ohne `reihenfolge`: Position bleibt. Alles in einer Transaktion (`produktRepo.setzeReihenfolge(id, n)`, `produktRepo.normalisiereReihenfolge()`, `produktRepo.loesche(id)`).
 
 - Der Server läuft im Electron-Main auf `127.0.0.1:47100` (`@hono/node-server`). Zusätzlich `npm run server` (Datei `src/server/standalone.ts`) für Plan B ohne Electron.
 

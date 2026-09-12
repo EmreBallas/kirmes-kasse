@@ -5,12 +5,15 @@ import type {
   Druckauftrag,
   DruckStatus,
   Position,
+  Storno,
   VerkaufAnfrage,
+  VerkaufAntwort,
   Warenkorb,
   Zahlart,
   ZahlungsErgebnis,
   ZahlungsWarnung
 } from '@core/types'
+import { formatChf } from '@core/geld'
 import { betragAusText } from './betrag'
 
 /** Schnellwahl-Betraege in Rappen bzw. Cent (10, 20, 50, 100, 200). */
@@ -114,6 +117,36 @@ export function bannerDruckProblem(verlauf: DruckVerlauf, ampel: DruckStatus['am
   if (verlauf === 'failed' || verlauf === 'lange') return true
   if (verlauf === 'unbekannt') return ampel === 'pruefen'
   return false
+}
+
+// ---------------------------------------------------------------- Banner nach Storno
+
+/** Zustand des Banners nach dem Bezahlen: die Verkaufsantwort und, falls inzwischen storniert, der Storno. */
+export interface BannerZustand {
+  antwort: VerkaufAntwort
+  storno: Storno | null
+}
+
+/** Neuer Banner-Zustand fuer eine frische Verkaufsantwort (kein Storno). */
+export function bannerAusAntwort(antwort: VerkaufAntwort | null): BannerZustand | null {
+  return antwort === null ? null : { antwort, storno: null }
+}
+
+/**
+ * Wird der Beleg storniert, der gerade im Banner steht, merkt sich das Banner den Storno und zeigt
+ * statt "Rueckgeld" die Storno-Zeile. Ein Storno eines anderen Belegs laesst das Banner unveraendert.
+ */
+export function bannerNachStorno(banner: BannerZustand | null, storno: Storno): BannerZustand | null {
+  if (banner === null) return null
+  if (banner.antwort.verkauf.id !== storno.verkaufId) return banner
+  return { antwort: banner.antwort, storno }
+}
+
+/** "Beleg K1-0004 storniert · Auszahlung CHF 2.50" bzw. ohne Auszahlung bei Helfer/0. */
+export function stornoBannerText(belegnr: string, storno: Pick<Storno, 'auszahlungChfRappen'>): string {
+  const basis = `Beleg ${belegnr} storniert`
+  if (storno.auszahlungChfRappen <= 0) return basis
+  return `${basis} · Auszahlung CHF ${formatChf(storno.auszahlungChfRappen)}`
 }
 
 /** Erzeugt die Verkaufs-UUID (Idempotenz, Fachregel 17). */

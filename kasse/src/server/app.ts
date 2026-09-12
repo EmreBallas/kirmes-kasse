@@ -312,7 +312,8 @@ export function erstelleKassenApp(deps: AppDeps): KassenApp {
     if (aktiv !== undefined) p.aktiv = aktiv
     const ausverkauft = boolFeldOptional(o, 'ausverkauft')
     if (ausverkauft !== undefined) p.ausverkauft = ausverkauft
-    const reihenfolge = ganzzahlFeldOptional(o, 'reihenfolge')
+    // Zielposition mit Einfüge-Semantik (1 = ganz oben); wird im Repo auf 1..N begrenzt
+    const reihenfolge = ganzzahlFeldOptional(o, 'reihenfolge', { min: 1 })
     if (reihenfolge !== undefined) p.reihenfolge = reihenfolge
     return p
   }
@@ -361,6 +362,23 @@ export function erstelleKassenApp(deps: AppDeps): KassenApp {
     const produkt = repos.produkt.aktualisiere(c.req.param('id'), p)
     if (produkt === null) return fehler(c, 404, 'produkt_nicht_gefunden', 'Produkt nicht gefunden.')
     return c.json(produkt)
+  })
+
+  // Löschen nur ohne Verkäufe: sobald eine Position auf das Produkt verweist, bleibt es
+  // als Stammdatum erhalten und kann nur deaktiviert werden (Fachregel 15).
+  app.delete('/api/produkte/:id', mitPin, (c) => {
+    const ergebnis = repos.produkt.loesche(c.req.param('id'))
+    if (ergebnis === 'nicht_gefunden')
+      return fehler(c, 404, 'produkt_nicht_gefunden', 'Produkt nicht gefunden.')
+    if (ergebnis === 'hat_verkaeufe') {
+      return fehler(
+        c,
+        409,
+        'produkt_hat_verkaeufe',
+        'Produkt wurde bereits verkauft und kann nur deaktiviert werden.'
+      )
+    }
+    return c.json({ ok: true })
   })
 
   app.post('/api/produkte/:id/ausverkauft', async (c) => {

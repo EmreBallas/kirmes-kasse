@@ -57,6 +57,31 @@ describe('api-Client', () => {
     expect(aufrufe[0]?.init.body).toBe(JSON.stringify({ grund: 'tippfehler' }))
   })
 
+  it('DELETE /api/produkte/:id sendet den X-Pin-Header ohne Body', async () => {
+    const aufrufe: Aufruf[] = []
+    const api = erstelleApi(fakeFetch(200, { ok: true }, aufrufe), '')
+    const antwort = await api.produktLoeschen('p 1', '1234')
+    expect(antwort.ok).toBe(true)
+    expect(aufrufe[0]?.url).toBe('/api/produkte/p%201')
+    expect(aufrufe[0]?.init.method).toBe('DELETE')
+    expect(aufrufe[0]?.init.body).toBeUndefined()
+    const headers = aufrufe[0]?.init.headers as Record<string, string>
+    expect(headers[PIN_HEADER]).toBe('1234')
+    expect(headers['Content-Type']).toBeUndefined()
+  })
+
+  it('DELETE mit 409 produkt_hat_verkaeufe wird als ApiFehler mit diesem Code geworfen', async () => {
+    const api = erstelleApi(fakeFetch(409, { fehler: 'produkt_hat_verkaeufe', meldung: 'Produkt wurde bereits verkauft' }, []), '')
+    try {
+      await api.produktLoeschen('p1', '1234')
+      expect.unreachable()
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApiFehler)
+      expect((e as ApiFehler).status).toBe(409)
+      expect((e as ApiFehler).fehler).toBe('produkt_hat_verkaeufe')
+    }
+  })
+
   it('Fehlerantwort des Servers wird als ApiFehler geworfen', async () => {
     const api = erstelleApi(fakeFetch(409, { fehler: 'nicht_gedeckt', meldung: 'Betrag nicht gedeckt' }, []), '')
     const versuch = api.verkauf({

@@ -64,7 +64,12 @@ export function erstelleRepos(db: DatabaseSync, uhr?: Uhr, neueId?: () => string
 export type { RepoKontext } from './kontext'
 export { erstelleKontext } from './kontext'
 export { erstelleProduktRepo, istGruppe } from './produktRepo'
-export type { ProduktRepo, ProduktNeu, ProduktAenderung } from './produktRepo'
+export type {
+  ProduktRepo,
+  ProduktNeu,
+  ProduktAenderung,
+  ProduktLoeschErgebnis
+} from './produktRepo'
 export { erstelleKassentagRepo } from './kassentagRepo'
 export type { KassentagRepo, KassentagNeu, KassentagAbschlussDaten } from './kassentagRepo'
 export { erstelleVerkaufRepo, istZahlart } from './verkaufRepo'

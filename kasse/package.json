@@ -19,7 +19,8 @@
     "postinstall": "electron-builder install-app-deps",
     "build:unpack": "npm run build && electron-builder --win dir",
     "build:win": "npm run build && electron-builder --win",
-    "server": "node --import ./tools/node-alias.mjs src/server/standalone.ts"
+    "server": "node --import ./tools/node-alias.mjs src/server/standalone.ts",
+    "paket": "electron-builder --win dir && node tools/nach-paket.mjs"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",

@@ -1,11 +1,16 @@
 /**
- * Produktverwaltung (hinter PIN): Liste aller Produkte inkl. inaktiver, Anlegen/Aendern, Deaktivieren.
+ * Produktverwaltung (hinter PIN): Liste aller Produkte inkl. inaktiver, Anlegen/Aendern, Deaktivieren,
+ * Loeschen (nur nie verkaufte Produkte; sonst 409 produkt_hat_verkaeufe -> Hinweis im Dialog).
  */
 import { useCallback, useEffect, useState, type JSX } from 'react'
 import type { Gruppe, Produkt } from '@core/types'
 import { formatChf, parseBetrag } from '@core/geld'
 import { NAME_MAX } from '@core/bon'
 import { ApiFehler, api, fehlerMeldung } from '../api'
+import { Popup } from './Popup'
+
+/** Meldung im Loeschen-Dialog, wenn der Server 409 produkt_hat_verkaeufe antwortet. */
+export const MELDUNG_PRODUKT_HAT_VERKAEUFE = 'Produkt wurde bereits verkauft und kann nur deaktiviert werden.'
 
 interface Props {
   pin: string
@@ -40,6 +45,8 @@ export function Verwaltung({ pin, onZurueck, onPinUngueltig }: Props): JSX.Eleme
   const [formular, setFormular] = useState<Formular | null>(null)
   const [meldung, setMeldung] = useState<{ text: string; art: 'ok' | 'fehler' } | null>(null)
   const [sendet, setSendet] = useState(false)
+  /** Rueckfrage "endgueltig loeschen?" mit allfaelliger Fehlermeldung des Servers */
+  const [loeschen, setLoeschen] = useState<{ produkt: Produkt; fehler: string | null } | null>(null)
 
   const laden = useCallback(async (): Promise<void> => {
     try {
@@ -114,6 +121,30 @@ export function Verwaltung({ pin, onZurueck, onPinUngueltig }: Props): JSX.Eleme
     }
   }
 
+  const endgueltigLoeschen = async (): Promise<void> => {
+    if (loeschen === null || sendet) return
+    const p = loeschen.produkt
+    setSendet(true)
+    try {
+      await api.produktLoeschen(p.id, pin)
+      setLoeschen(null)
+      if (formular?.id === p.id) setFormular(null)
+      setMeldung({ text: `Produkt «${p.name}» gelöscht.`, art: 'ok' })
+      await laden()
+    } catch (e) {
+      if (e instanceof ApiFehler && e.fehler === 'produkt_hat_verkaeufe') {
+        setLoeschen({ produkt: p, fehler: MELDUNG_PRODUKT_HAT_VERKAEUFE })
+      } else if (e instanceof ApiFehler && e.fehler === 'pin_falsch') {
+        setLoeschen(null)
+        onPinUngueltig()
+      } else {
+        setLoeschen({ produkt: p, fehler: fehlerMeldung(e) })
+      }
+    } finally {
+      setSendet(false)
+    }
+  }
+
   return (
     <main className="seite seite-liste">
       <div className="seite-kopf">
@@ -175,6 +206,9 @@ export function Verwaltung({ pin, onZurueck, onPinUngueltig }: Props): JSX.Eleme
                           Aktivieren
                         </button>
                       )}
+                      <button type="button" className="knopf knopf-gefahr-umrandet knopf-klein" onClick={() => setLoeschen({ produkt: p, fehler: null })} disabled={sendet}>
+                        Löschen
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -219,6 +253,7 @@ export function Verwaltung({ pin, onZurueck, onPinUngueltig }: Props): JSX.Eleme
             <label className="feld">
               <span>Reihenfolge</span>
               <input type="text" inputMode="numeric" className="eingabe zahl" value={formular.reihenfolge} onChange={(ev) => setFormular({ ...formular, reihenfolge: ev.target.value })} />
+              <span className="feld-hinweis">Position im Raster; andere Produkte rutschen nach unten</span>
             </label>
             <div className="knopfgruppe">
               <button type="button" className="knopf knopf-neutral knopf-gross" onClick={() => setFormular(null)} disabled={sendet}>
@@ -231,6 +266,24 @@ export function Verwaltung({ pin, onZurueck, onPinUngueltig }: Props): JSX.Eleme
           </form>
         ) : null}
       </div>
+
+      {loeschen !== null ? (
+        <Popup
+          titel={`Produkt «${loeschen.produkt.name}» endgültig löschen?`}
+          art="frage"
+          knoepfe={[
+            { text: 'Abbrechen', art: 'neutral', onClick: () => setLoeschen(null), autoFokus: true },
+            { text: 'Löschen', art: 'gefahr', onClick: () => void endgueltigLoeschen() }
+          ]}
+        >
+          <p>Das Produkt verschwindet aus Liste und Raster. Nur möglich, wenn es noch nie verkauft wurde.</p>
+          {loeschen.fehler !== null ? (
+            <p className="meldung-fehler" role="alert">
+              {loeschen.fehler}
+            </p>
+          ) : null}
+        </Popup>
+      ) : null}
     </main>
   )
 }

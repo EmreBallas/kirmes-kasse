@@ -11,6 +11,8 @@ interface Props {
   kassentag: Kassentag | null
   status: StatusAntwort | null
   verbunden: boolean
+  /** Kasse beenden (PIN); fehlt im normalen Browser (Plan B), dann kein Knopf */
+  onBeenden?: () => void
   onLetzte: () => void
   onAbschluss: () => void
   onVerwaltung: () => void
@@ -48,6 +50,11 @@ export function Kopfzeile(p: Props): JSX.Element {
   return (
     <header className="kopfzeile">
       <div className="kopf-links">
+        {p.onBeenden !== undefined ? (
+          <button type="button" className="knopf knopf-neutral knopf-symbol knopf-beenden" onClick={p.onBeenden} title="Kasse beenden (PIN)">
+            <SchlossSymbol /> Beenden
+          </button>
+        ) : null}
         <span className="kopf-datum">{p.kassentag !== null ? formatDatum(p.kassentag.datum) : '–'}</span>
         <span className="kopf-kassier">{p.kassentag !== null ? p.kassentag.kassier : ''}</span>
         <Ampel status={p.status} verbunden={p.verbunden} />

@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState, type JSX } from 'react'
 import type { Einstellungen, Kassentag, Produkt, StatusAntwort, VerkaufAntwort, Warenkorb, Zahlart } from '@core/types'
 import { entfernen, hinzufuegen, leererWarenkorb, mengeAendern } from '@core/warenkorb'
 import { api, fehlerMeldung } from '../api'
+import type { BannerZustand } from '../bezahlen'
 import { Banner } from './Banner'
 import { Bezahldialog } from './Bezahldialog'
 import { Kopfzeile } from './Kopfzeile'
@@ -19,8 +20,10 @@ interface Props {
   einstellungen: Einstellungen | null
   warenkorb: Warenkorb
   onWarenkorb: (w: Warenkorb) => void
-  banner: VerkaufAntwort | null
+  banner: BannerZustand | null
   onBanner: (b: VerkaufAntwort | null) => void
+  /** Kasse beenden (PIN); nur im Electron-Fenster vorhanden */
+  onBeenden?: () => void
   onLetzte: () => void
   onAbschluss: () => void
   onVerwaltung: () => void
@@ -77,6 +80,7 @@ export function Verkauf(p: Props): JSX.Element {
         kassentag={p.kassentag}
         status={p.status}
         verbunden={p.verbunden}
+        onBeenden={p.onBeenden}
         onLetzte={p.onLetzte}
         onAbschluss={p.onAbschluss}
         onVerwaltung={p.onVerwaltung}
@@ -84,8 +88,9 @@ export function Verkauf(p: Props): JSX.Element {
       />
       {p.banner !== null ? (
         <Banner
-          key={p.banner.verkauf.id}
-          antwort={p.banner}
+          key={p.banner.antwort.verkauf.id}
+          antwort={p.banner.antwort}
+          storno={p.banner.storno}
           druck={p.status?.druck ?? null}
           onDruckProblem={setBannerFest}
           onSchliessen={() => {

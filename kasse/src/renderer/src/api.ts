@@ -95,7 +95,7 @@ export function fehlerMeldung(e: unknown): string {
   return 'Unbekannter Fehler'
 }
 
-export type Methode = 'GET' | 'POST' | 'PUT'
+export type Methode = 'GET' | 'POST' | 'PUT' | 'DELETE'
 
 export interface KassentagAktuellAntwort {
   kassentag: Kassentag | null
@@ -197,6 +197,8 @@ export function erstelleApi(
     produktAnlegen: (daten, pin) => anfrage<Produkt>('POST', '/api/produkte', daten, pin),
     produktAendern: (id, daten, pin) =>
       anfrage<Produkt>('PUT', `/api/produkte/${encodeURIComponent(id)}`, daten, pin),
+    produktLoeschen: (id, pin) =>
+      anfrage<{ ok: boolean }>('DELETE', `/api/produkte/${encodeURIComponent(id)}`, undefined, pin),
     ausverkauftSetzen: (id, ausverkauft) =>
       anfrage<Produkt>('POST', `/api/produkte/${encodeURIComponent(id)}/ausverkauft`, { ausverkauft }),
 
@@ -254,6 +256,11 @@ export interface KasseApi {
   produkte(alle?: boolean): Promise<Produkt[]>
   produktAnlegen(daten: Partial<Produkt>, pin: string): Promise<Produkt>
   produktAendern(id: string, daten: Partial<Produkt>, pin: string): Promise<Produkt>
+  /**
+   * Loescht ein nie verkauftes Produkt endgueltig (DELETE, PIN). Wurde es schon verkauft, antwortet der
+   * Server 409 `produkt_hat_verkaeufe`; dann bleibt nur Deaktivieren.
+   */
+  produktLoeschen(id: string, pin: string): Promise<{ ok: boolean }>
   ausverkauftSetzen(id: string, ausverkauft: boolean): Promise<Produkt>
   kassentagAktuell(): Promise<KassentagAktuellAntwort>
   kassentagStart(daten: KassentagStartAnfrage): Promise<Kassentag>

@@ -153,8 +153,9 @@ function bon1Dokument(verkauf: Verkauf, positionen: readonly Position[], zahlung
       zeilen.push(zeile(labelWert('RÜCKGELD CHF', formatChf(zahlung.rueckgeldChfRappen), SPALTEN.doppelt), 'doppelt', 'links', true))
       break
     case 'twint':
-      zeilen.push(zeile(labelWert('Gegeben CHF', formatChf(zahlung.gegeben))))
-      if (zahlung.spendeChfRappen > 0) zeilen.push(zeile(labelWert('Spende CHF', formatChf(zahlung.spendeChfRappen))))
+      // Kennzeichnung TWINT: der Kassier sieht bei Reklamation/Storno sofort, dass kein Bargeld in der Lade liegt.
+      zeilen.push(zeile(labelWert('Gegeben CHF - TWINT', formatChf(zahlung.gegeben))))
+      if (zahlung.spendeChfRappen > 0) zeilen.push(zeile(labelWert('Spende CHF - TWINT', formatChf(zahlung.spendeChfRappen))))
       break
     case 'helfer':
       zeilen.push(zeile('HELFER', 'doppelt', 'mitte', true))

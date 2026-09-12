@@ -179,14 +179,32 @@ describe('bonModellVerkauf – Twint, EUR, Helfer', () => {
     const m = bonModellVerkauf(v, POSITIONEN, z, { nachdruck: null })
     expect(m.schublade).toBe(false)
     const t = texte(letztes(m))
-    expect(t).toContain('Gegeben CHF                                50.00')
-    expect(t).toContain('Spende CHF                                  5.00')
+    expect(t).toContain('Gegeben CHF - TWINT                        50.00')
+    expect(t).toContain('Spende CHF - TWINT                          5.00')
     expect(t.some((x) => x.startsWith('RÜCKGELD'))).toBe(false)
+    pruefeBreiten(m)
 
     const ohneSpende: Zahlung = { ...z, gegeben: 4500, gegebenChfRappen: 4500, spendeChfRappen: 0, spendeTyp: null }
     const t2 = texte(letztes(bonModellVerkauf(v, POSITIONEN, ohneSpende, { nachdruck: null })))
+    expect(t2).toContain('Gegeben CHF - TWINT                        45.00')
     expect(t2.some((x) => x.startsWith('Spende'))).toBe(false)
     expect(t2.some((x) => x.startsWith('RÜCKGELD'))).toBe(false)
+  })
+
+  it('Twint-Kennzeichnung nur bei Twint: Bar CHF, Bar EUR und Helfer enthalten kein TWINT', () => {
+    const barChf = texte(letztes(bonModellVerkauf(VERKAUF, POSITIONEN, ZAHLUNG_BAR, { nachdruck: null })))
+    expect(barChf.some((x) => x.includes('TWINT'))).toBe(false)
+    expect(barChf).toContain('Gegeben CHF                                50.00')
+
+    const vEur: Verkauf = { ...VERKAUF, zahlart: 'bar_eur', totalRappen: 1200 }
+    const zEur: Zahlung = { verkaufId: 'v1', waehrung: 'EUR', kursX10000: 9000, gegeben: 2000, gegebenChfRappen: 1800, rueckgeldChfRappen: 500, spendeChfRappen: 100, spendeTyp: 'bar_eur' }
+    const barEur = texte(letztes(bonModellVerkauf(vEur, POSITIONEN, zEur, { nachdruck: null })))
+    expect(barEur.some((x) => x.includes('TWINT'))).toBe(false)
+    expect(barEur).toContain('Spende CHF                                  1.00')
+
+    const vHelfer: Verkauf = { ...VERKAUF, zahlart: 'helfer', totalRappen: 0 }
+    const helfer = texte(letztes(bonModellVerkauf(vHelfer, POSITIONEN, { ...ZAHLUNG_BAR, gegeben: 0, gegebenChfRappen: 0, rueckgeldChfRappen: 0 }, { nachdruck: null })))
+    expect(helfer.some((x) => x.includes('TWINT'))).toBe(false)
   })
 
   it('EUR: Gegeben EUR, Kurs 0.90, Rückgeld CHF, Schublade auf', () => {

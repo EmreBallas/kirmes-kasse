@@ -96,8 +96,10 @@ describe('Health und Status', () => {
     const a = await u.anfrage('GET', '/api/gibtsnicht')
     expect(a.status).toBe(404)
     expect(a.json['fehler']).toBe('nicht_gefunden')
-    const b = await u.anfrage('DELETE', '/api/produkte/x')
+    // DELETE /api/produkte/:id gibt es inzwischen (PIN-geschützt); eine andere Methode/Route prüfen
+    const b = await u.anfrage('DELETE', '/api/verkauf/x')
     expect(b.status).toBe(404)
+    expect(b.json['fehler']).toBe('nicht_gefunden')
   })
 })
 
@@ -647,6 +649,178 @@ describe('PIN, Produkte, Einstellungen', () => {
     expect(lang.status).toBe(400)
     const fehlt = await u.anfrage('PUT', '/api/produkte/gibtsnicht', { name: 'x' }, TEST_PIN)
     expect(fehlt.status).toBe(404)
+  })
+
+  describe('Reihenfolge mit Einfüge-Semantik', () => {
+    /** Namen aller Produkte in Reihenfolge-Sortierung und Prüfung, dass 1..N ohne Lücken/Doppel. */
+    function reihenfolge(): { namen: string[]; nummern: number[] } {
+      const alle = u.repos.produkt.alle(false)
+      return { namen: alle.map((p) => p.name), nummern: alle.map((p) => p.reihenfolge) }
+    }
+    function eins_bis(n: number): number[] {
+      return Array.from({ length: n }, (_, i) => i + 1)
+    }
+
+    it('neues Produkt auf 1: Winti Burger wird 2, alle anderen rutschen um eins', async () => {
+      u = erstelleTestUmgebung()
+      const vorher = reihenfolge()
+      expect(vorher.namen[0]).toBe('Winti Burger')
+      expect(vorher.nummern).toEqual(eins_bis(15))
+
+      const a = await u.anfrage(
+        'POST',
+        '/api/produkte',
+        { name: 'Neu ganz oben', preisRappen: 300, gruppe: 'kasse', reihenfolge: 1 },
+        TEST_PIN
+      )
+      expect(a.status).toBe(201)
+      expect(a.json['reihenfolge']).toBe(1)
+
+      const nachher = reihenfolge()
+      expect(nachher.namen).toEqual(['Neu ganz oben', ...vorher.namen])
+      expect(nachher.nummern).toEqual(eins_bis(16))
+      expect(u.repos.produkt.finde(u.produktId('Winti Burger'))?.reihenfolge).toBe(2)
+    })
+
+    it('Ändern von 5 auf 2: die bisherigen 2..4 werden 3..5, keine Lücken', async () => {
+      u = erstelleTestUmgebung()
+      const vorher = reihenfolge()
+      const fuenftes = vorher.namen[4]
+      expect(fuenftes).toBe('Döner Kebap')
+
+      const a = await u.anfrage(
+        'PUT',
+        `/api/produkte/${u.produktId('Döner Kebap')}`,
+        { reihenfolge: 2 },
+        TEST_PIN
+      )
+      expect(a.status).toBe(200)
+      expect(a.json['reihenfolge']).toBe(2)
+
+      const nachher = reihenfolge()
+      expect(nachher.namen).toEqual([
+        vorher.namen[0],
+        'Döner Kebap',
+        vorher.namen[1],
+        vorher.namen[2],
+        vorher.namen[3],
+        ...vorher.namen.slice(5)
+      ])
+      expect(nachher.nummern).toEqual(eins_bis(15))
+    })
+
+    it('Ändern nach unten (2 auf 5) landet genau auf 5; ohne reihenfolge im Body bleibt die Position', async () => {
+      u = erstelleTestUmgebung()
+      const vorher = reihenfolge()
+      const zweites = vorher.namen[1]
+      const a = await u.anfrage(
+        'PUT',
+        `/api/produkte/${u.produktId(zweites ?? '')}`,
+        { reihenfolge: 5 },
+        TEST_PIN
+      )
+      expect(a.json['reihenfolge']).toBe(5)
+      const nachher = reihenfolge()
+      expect(nachher.namen[4]).toBe(zweites)
+      expect(nachher.namen.slice(1, 4)).toEqual(vorher.namen.slice(2, 5))
+      expect(nachher.nummern).toEqual(eins_bis(15))
+
+      const b = await u.anfrage(
+        'PUT',
+        `/api/produkte/${u.produktId(zweites ?? '')}`,
+        { name: 'Umbenannt' },
+        TEST_PIN
+      )
+      expect(b.json['reihenfolge']).toBe(5)
+      expect(reihenfolge().nummern).toEqual(eins_bis(15))
+    })
+
+    it('ohne reihenfolge beim Anlegen: ans Ende (max + 1); zu grosse Werte werden auf N begrenzt, 0 ist ungültig', async () => {
+      u = erstelleTestUmgebung()
+      const ende = await u.anfrage(
+        'POST',
+        '/api/produkte',
+        { name: 'Am Ende', preisRappen: 100, gruppe: 'kasse' },
+        TEST_PIN
+      )
+      expect(ende.json['reihenfolge']).toBe(16)
+      const weit = await u.anfrage(
+        'POST',
+        '/api/produkte',
+        { name: 'Weit hinten', preisRappen: 100, gruppe: 'kasse', reihenfolge: 999 },
+        TEST_PIN
+      )
+      expect(weit.json['reihenfolge']).toBe(17)
+      expect(reihenfolge().nummern).toEqual(eins_bis(17))
+      const null_ = await u.anfrage(
+        'POST',
+        '/api/produkte',
+        { name: 'Null', preisRappen: 100, gruppe: 'kasse', reihenfolge: 0 },
+        TEST_PIN
+      )
+      expect(null_.status).toBe(400)
+    })
+
+    it('Repo: normalisiereReihenfolge räumt Doppel und Lücken aus Altdaten auf (reihenfolge, dann erstellt_am)', () => {
+      u = erstelleTestUmgebung({ ohneSeed: true })
+      u.db.exec(
+        'INSERT INTO produkt (id, name, preis_rappen, gruppe, aktiv, ausverkauft, reihenfolge, erstellt_am) VALUES ' +
+          "('b', 'B', 100, 'kasse', 1, 0, 3, '2026-09-01T10:00:00'), " +
+          "('a', 'A', 100, 'kasse', 0, 0, 3, '2026-09-01T09:00:00'), " +
+          "('c', 'C', 100, 'kasse', 1, 0, 9, '2026-09-01T11:00:00')"
+      )
+      u.repos.produkt.normalisiereReihenfolge()
+      const alle = u.repos.produkt.alle(false)
+      expect(alle.map((p) => [p.name, p.reihenfolge])).toEqual([
+        ['A', 1],
+        ['B', 2],
+        ['C', 3]
+      ])
+      expect(u.repos.produkt.setzeReihenfolge('gibtsnicht', 1)).toBeNull()
+    })
+  })
+
+  describe('DELETE /api/produkte/:id', () => {
+    it('ohne Verkäufe: 200 und weg, Reihenfolge wieder 1..N', async () => {
+      u = erstelleTestUmgebung()
+      const id = u.produktId('Lahmacun')
+      expect(u.repos.produkt.finde(id)?.reihenfolge).toBe(3)
+      const a = await u.anfrage('DELETE', `/api/produkte/${id}`, undefined, TEST_PIN)
+      expect(a.status).toBe(200)
+      expect(a.json).toEqual({ ok: true })
+      expect(u.repos.produkt.finde(id)).toBeNull()
+      expect((await u.anfrage('GET', '/api/produkte?alle=1')).liste).toHaveLength(14)
+      const alle = u.repos.produkt.alle(false)
+      expect(alle.map((p) => p.reihenfolge)).toEqual(Array.from({ length: 14 }, (_, i) => i + 1))
+      expect(alle[2]?.name).toBe('Gözleme')
+    })
+
+    it('mit Verkauf: 409 produkt_hat_verkaeufe und das Produkt bleibt', async () => {
+      u = erstelleTestUmgebung()
+      await u.kassentagStarten()
+      expect((await u.verkauf('v1', [{ name: 'Winti Burger', anzahl: 1 }])).status).toBe(201)
+      const id = u.produktId('Winti Burger')
+      const a = await u.anfrage('DELETE', `/api/produkte/${id}`, undefined, TEST_PIN)
+      expect(a.status).toBe(409)
+      expect(a.json).toEqual({
+        fehler: 'produkt_hat_verkaeufe',
+        meldung: 'Produkt wurde bereits verkauft und kann nur deaktiviert werden.'
+      })
+      expect(u.repos.produkt.finde(id)).not.toBeNull()
+      expect(u.repos.produkt.anzahlVerkaufsPositionen(id)).toBe(1)
+    })
+
+    it('ohne PIN 403, unbekannte id 404', async () => {
+      u = erstelleTestUmgebung()
+      const id = u.produktId('Lahmacun')
+      const ohne = await u.anfrage('DELETE', `/api/produkte/${id}`)
+      expect(ohne.status).toBe(403)
+      expect(ohne.json).toEqual({ fehler: 'pin_falsch', meldung: 'PIN falsch.' })
+      expect(u.repos.produkt.finde(id)).not.toBeNull()
+      const fehlt = await u.anfrage('DELETE', '/api/produkte/gibtsnicht', undefined, TEST_PIN)
+      expect(fehlt.status).toBe(404)
+      expect(fehlt.json['fehler']).toBe('produkt_nicht_gefunden')
+    })
   })
 
   it('Einstellungen: GET ohne PIN-Felder, PUT mit PIN und neuer PIN', async () => {

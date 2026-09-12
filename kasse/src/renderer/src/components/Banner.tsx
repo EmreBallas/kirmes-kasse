@@ -6,32 +6,48 @@
  * ist. Solange zeigt das Banner "Druck laeuft ...", nach DRUCK_WARTEZEIT_MS ohne "done" bereits die
  * Handschreib-Liste. Bei einem Druckproblem meldet es sich ueber onDruckProblem, damit es nicht durch
  * das Antippen einer Kachel verschwindet, sondern nur ueber den Schliessen-Knopf.
+ *
+ * Wurde der Beleg des Banners inzwischen in "Letzte Verkaeufe" storniert (storno != null), zeigt das
+ * Banner statt Rueckgeld die Storno-Zeile ("Beleg K1-0004 storniert · Auszahlung CHF 2.50"), verfolgt
+ * keinen Druck mehr und schliesst wie gewohnt beim naechsten Antippen einer Kachel.
  */
 import { useEffect, useRef, useState, type JSX } from 'react'
-import type { Druckauftrag, DruckStatus, VerkaufAntwort } from '@core/types'
+import type { Druckauftrag, DruckStatus, Storno, VerkaufAntwort } from '@core/types'
 import { formatChf } from '@core/geld'
 import { api } from '../api'
-import { DRUCK_POLL_MS, ZAHLART_NAME, bannerDruckProblem, druckVerlauf, handschreibListe, listeAlsText } from '../bezahlen'
+import {
+  DRUCK_POLL_MS,
+  STORNO_GRUND_NAME,
+  ZAHLART_NAME,
+  bannerDruckProblem,
+  druckVerlauf,
+  handschreibListe,
+  listeAlsText,
+  stornoBannerText
+} from '../bezahlen'
 
 interface Props {
   antwort: VerkaufAntwort
+  /** Storno dieses Belegs, falls er nach dem Bezahlen storniert wurde */
+  storno?: Storno | null
   druck: DruckStatus | null
   onSchliessen: () => void
   /** meldet, ob das Banner gerade ein Druckproblem zeigt (dann nur ueber den Knopf schliessen) */
   onDruckProblem?: (problem: boolean) => void
 }
 
-export function Banner({ antwort, druck, onSchliessen, onDruckProblem }: Props): JSX.Element {
+export function Banner({ antwort, storno = null, druck, onSchliessen, onDruckProblem }: Props): JSX.Element {
   const { verkauf, zahlung, sofortAusgeben, positionen } = antwort
   const auftragId = antwort.druckauftragId
+  const storniert = storno !== null
   const [auftrag, setAuftrag] = useState<Druckauftrag | null>(null)
   const [vergangenMs, setVergangenMs] = useState(0)
   const start = useRef(Date.now())
   const fertig = auftrag?.status === 'done' || auftrag?.status === 'failed'
 
-  // Eigenen Druckauftrag verfolgen, bis er done oder failed ist
+  // Eigenen Druckauftrag verfolgen, bis er done oder failed ist (nach Storno nicht mehr noetig)
   useEffect(() => {
-    if (auftragId === null || fertig) return undefined
+    if (auftragId === null || fertig || storniert) return undefined
     let aktiv = true
     let laeuft = false
     const abfragen = async (): Promise<void> => {
@@ -55,10 +71,11 @@ export function Banner({ antwort, druck, onSchliessen, onDruckProblem }: Props):
       aktiv = false
       window.clearInterval(timer)
     }
-  }, [auftragId, fertig])
+  }, [auftragId, fertig, storniert])
 
   const verlauf = druckVerlauf(auftrag, auftragId !== null, vergangenMs)
-  const druckProblem = bannerDruckProblem(verlauf, druck?.ampel ?? null)
+  // Ein stornierter Beleg ist kein Druckproblem mehr: das Banner schliesst wieder per Kachel
+  const druckProblem = !storniert && bannerDruckProblem(verlauf, druck?.ampel ?? null)
   const druckFehler = auftrag?.fehler ?? druck?.letzterFehler ?? null
   const handschreiben = handschreibListe(positionen)
   const zeigeSpende = zahlung.spendeChfRappen > 0
@@ -66,6 +83,22 @@ export function Banner({ antwort, druck, onSchliessen, onDruckProblem }: Props):
   useEffect(() => {
     onDruckProblem?.(druckProblem)
   }, [druckProblem, onDruckProblem])
+
+  if (storno !== null) {
+    return (
+      <div className="banner banner-storniert" role="status">
+        <div className="banner-links">
+          <div className="banner-beleg">
+            Beleg <span className="zahl">{verkauf.belegnr}</span> · {ZAHLART_NAME[verkauf.zahlart]} · Storno ({STORNO_GRUND_NAME[storno.grund]})
+          </div>
+          <div className="banner-rueckgeld banner-rueckgeld-klein banner-storno-zeile">{stornoBannerText(verkauf.belegnr, storno)}</div>
+        </div>
+        <button type="button" className="knopf knopf-neutral" onClick={onSchliessen} aria-label="Banner schliessen">
+          ×
+        </button>
+      </div>
+    )
+  }
 
   return (
     <div className={`banner${druckProblem ? ' banner-druckproblem' : ''}`} role="status">
