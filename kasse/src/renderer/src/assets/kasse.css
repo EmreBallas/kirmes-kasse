@@ -218,6 +218,55 @@ textarea {
   outline: 3px solid var(--primaer);
   outline-offset: 1px;
 }
+/* Auswahlliste (Druckerwahl): wie .eingabe, aber mit Pfeil des Browsers */
+select.eingabe-auswahl {
+  font-size: 18px;
+  cursor: pointer;
+}
+
+/* ---------------------------------------------------------------- Einstellungen: Drucker */
+
+/* Hinweiskasten "Drucker gefunden" bzw. "Drucker uebernommen" oberhalb der Druckerwahl */
+.drucker-hinweis {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 12px 16px;
+}
+.drucker-hinweis p {
+  margin: 0;
+  font-size: 18px;
+}
+.drucker-hinweis .knopf {
+  align-self: flex-start;
+}
+.drucker-liste-zeile {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+/* Ergebnis des Testdrucks: gruen uebergeben, rot mit Fehlertext, neutral solange er laeuft */
+.testdruck-ergebnis {
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 2px solid var(--rand);
+  background: var(--neutral);
+  font-size: 17px;
+  font-weight: 600;
+}
+.testdruck-ok {
+  border-color: var(--gruen);
+  background: var(--gruen-hell);
+  color: var(--gruen);
+}
+.testdruck-fehler {
+  border-color: var(--rot);
+  background: var(--rot-hell);
+  color: var(--rot);
+}
 .eingabe-fehler {
   border-color: var(--rot);
   background: var(--rot-hell);
@@ -404,6 +453,48 @@ textarea.eingabe {
   font-weight: 400;
   opacity: 0.9;
   margin-left: 6px;
+}
+/* Rote Ampel als Knopf: antippen springt in die Einstellungen; darunter die Meldung des Servers */
+.ampel-knopf {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0;
+  min-height: 48px;
+  padding: 4px 14px;
+  border: 2px solid var(--rot);
+  border-radius: 12px;
+  background: var(--rot);
+  font: inherit;
+  font-weight: 700;
+  font-size: 17px;
+  line-height: 1.15;
+  cursor: pointer;
+  max-width: 420px;
+  text-align: left;
+}
+.ampel-knopf:active {
+  filter: brightness(0.9);
+}
+.ampel-knopf:focus-visible {
+  outline: 3px solid var(--primaer);
+  outline-offset: 2px;
+}
+.ampel-text {
+  white-space: nowrap;
+}
+.ampel-pfeil {
+  font-weight: 400;
+}
+.ampel-meldung {
+  display: block;
+  max-width: 100%;
+  font-size: 13px;
+  font-weight: 400;
+  opacity: 0.95;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ---------------------------------------------------------------- Verkauf */

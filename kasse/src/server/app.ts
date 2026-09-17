@@ -24,6 +24,7 @@ import {
 import type {
   AbschlussBericht,
   Druckauftrag,
+  DruckerInfo,
   DruckStatus,
   Einstellungen,
   FehlerAntwort,
@@ -40,6 +41,7 @@ import type {
 } from '@core/types'
 import { sofortAusgeben } from '@core/warenkorb'
 import { berechneZahlung } from '@core/zahlung'
+import { schlageDruckerVor } from '@print/winspool'
 import { inTransaktion } from './db'
 import { erstelleDruckDienst, type DruckDienst } from './druck'
 import {
@@ -76,6 +78,14 @@ export interface AbschlussNachlauf {
   pdfPfad: string | null
 }
 
+/** Antwort von GET /api/drucker: installierte Warteschlangen, eingestellter Name und Vorschlag. */
+export interface DruckerListeAntwort {
+  drucker: DruckerInfo[]
+  eingestellt: string
+  /** Name des einzigen Epson-Kandidaten, wenn `eingestellt` nicht installiert ist; sonst null */
+  vorschlag: string | null
+}
+
 export type AbschlussNachlaufErgebnis =
   | void
   | AbschlussNachlauf
@@ -91,9 +101,17 @@ export interface AppDeps {
   /** Renderer-Build (out/renderer); wird statisch mit index.html-Fallback ausgeliefert */
   rendererOrdner?: string
   /** Status des Druck-Workers (worker.status()); fehlt er, meldet die Ampel "pruefen" */
-  druckStatus?: () => Pick<DruckStatus, 'ampel' | 'letzterFehler' | 'transport'>
+  druckStatus?: () => Pick<DruckStatus, 'ampel' | 'letzterFehler' | 'transport'> &
+    Partial<Pick<DruckStatus, 'vorschlag' | 'meldung'>>
   /** Wird nach jedem neuen Druckauftrag aufgerufen (z. B. worker.verarbeiteOffene()) */
   nachDruckauftrag?: () => void
+  /** Installierte Windows-Warteschlangen (listeDrucker aus @print); fehlt er, liefert GET /api/drucker eine leere Liste */
+  listeDrucker?: () => Promise<DruckerInfo[]>
+  /**
+   * Wird aufgerufen, sobald drucker_name geaendert wurde (PUT /api/einstellungen, POST /api/drucker/uebernehmen),
+   * damit der laufende Druck-Worker den neuen Namen sofort benutzt (worker.setzeDruckerName). Nicht abgewartet.
+   */
+  setzeDruckerName?: (name: string) => void | Promise<void>
   /**
    * Nach dem Kassenabschluss (PDF, Backup). Die Abschluss-Route wartet NICHT darauf; liefert der
    * Callback (auch asynchron) `{ pdfPfad }`, wird der Pfad am Kassentag gespeichert (`pdf_pfad`).
@@ -297,7 +315,21 @@ export function erstelleKassenApp(deps: AppDeps): KassenApp {
       letzterFehler: worker.letzterFehler,
       transport: worker.transport,
       offeneAuftraege: repos.druckauftrag.anzahlOffen(),
-      druckerName: repos.einstellung.einstellungen().druckerName
+      druckerName: repos.einstellung.einstellungen().druckerName,
+      vorschlag: worker.vorschlag ?? null,
+      meldung: worker.meldung ?? null
+    }
+  }
+
+  /** Meldet dem Druck-Worker den neuen Warteschlangennamen; Fehler landen nur im Protokoll. */
+  function druckerNameGeaendert(name: string): void {
+    if (deps.setzeDruckerName === undefined) return
+    try {
+      void Promise.resolve(deps.setzeDruckerName(name)).catch((e: unknown) => {
+        log(`setzeDruckerName-Callback fehlgeschlagen: ${fehlerText(e)}`)
+      })
+    } catch (e) {
+      log(`setzeDruckerName-Callback fehlgeschlagen: ${fehlerText(e)}`)
     }
   }
 
@@ -1001,11 +1033,44 @@ export function erstelleKassenApp(deps: AppDeps): KassenApp {
     if (neuePin !== undefined && !istGueltigePin(neuePin))
       throw new EingabeFehler('Neue PIN: 4 bis 8 Ziffern')
 
+    const vorher = repos.einstellung.einstellungen().druckerName
     const einstellungen = inTransaktion(deps.db, () => {
       const e = repos.einstellung.aktualisiere(aenderung)
       if (neuePin !== undefined) repos.einstellung.setzePin(neuePin)
       return e
     })
+    if (aenderung.druckerName !== undefined && aenderung.druckerName !== vorher) {
+      druckerNameGeaendert(aenderung.druckerName)
+    }
+    return c.json(einstellungen)
+  })
+
+  // ---------------------------------------------------------------- Drucker (installierte Warteschlangen)
+
+  app.get('/api/drucker', async (c) => {
+    let drucker: DruckerInfo[] = []
+    if (deps.listeDrucker !== undefined) {
+      try {
+        drucker = await deps.listeDrucker()
+      } catch (e) {
+        log(`Installierte Drucker konnten nicht gelesen werden: ${fehlerText(e)}`)
+      }
+    }
+    const eingestellt = repos.einstellung.einstellungen().druckerName
+    const antwort: DruckerListeAntwort = {
+      drucker,
+      eingestellt,
+      vorschlag: schlageDruckerVor(drucker, eingestellt)?.name ?? null
+    }
+    return c.json(antwort)
+  })
+
+  app.post('/api/drucker/uebernehmen', mitPin, async (c) => {
+    const o = await leseBody(c)
+    const name = textFeld(o, 'name', { max: 120 }).trim()
+    const vorher = repos.einstellung.einstellungen().druckerName
+    const einstellungen = repos.einstellung.aktualisiere({ druckerName: name })
+    if (name !== vorher) druckerNameGeaendert(name)
     return c.json(einstellungen)
   })
 

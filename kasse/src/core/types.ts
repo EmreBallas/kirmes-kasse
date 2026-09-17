@@ -311,12 +311,27 @@ export interface VerkaufAntwort {
   bereitsVorhanden: boolean
 }
 
+/** Eine installierte Windows-Warteschlange (Get-Printer), wie sie GET /api/drucker liefert. */
+export interface DruckerInfo {
+  name: string
+  port: string
+  treiber: string
+  status: string
+}
+
 export interface DruckStatus {
   ampel: 'ok' | 'pruefen'
   letzterFehler: string | null
   offeneAuftraege: number
   druckerName: string
   transport: 'winspool' | 'simulator'
+  /**
+   * Fehlt die eingestellte Warteschlange: Name der einzigen installierten Warteschlange, die nach
+   * einem Epson-Bondrucker aussieht (Vorschlag für die Einstellungen); sonst null
+   */
+  vorschlag: string | null
+  /** Lesbarer Hinweis zur fehlenden Warteschlange (inkl. Vorschlag); null, wenn nichts zu tun ist */
+  meldung: string | null
 }
 
 export interface StatusAntwort {

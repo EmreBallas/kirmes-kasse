@@ -7,12 +7,19 @@
  * existiert (Roadmap Punkt 14: "Druck OK" nur mit vorhandener Warteschlange). Die Pruefung wird im
  * Leerlauf alle pruefIntervallMs wiederholt, damit die Ampel nach einer Korrektur des Druckernamens
  * wieder gruen wird; ein fehlgeschlagener Auftrag bleibt bis zum naechsten Erfolg "pruefen".
+ *
+ * Fehlt die Warteschlange, listet der Worker die installierten Drucker (Get-Printer) und legt den
+ * einzigen Epson-Kandidaten als `vorschlag` in den Status (samt lesbarer `meldung`). Er aendert die
+ * Einstellungen NICHT selbst; das tun Main (nur beim unveraenderten Standardnamen) oder die Route
+ * POST /api/drucker/uebernehmen, die anschliessend `setzeDruckerName` aufrufen.
  */
 import { isAbsolute, resolve } from 'node:path'
-import type { Druckauftrag, DruckauftragStatus, DruckStatus } from '@core/types'
+import type { Druckauftrag, DruckauftragStatus, DruckerInfo, DruckStatus } from '@core/types'
 import type { DruckTransport, TransportName } from './transport'
 import {
   druckerVorhanden as druckerVorhandenStandard,
+  listeDrucker as listeDruckerStandard,
+  schlageDruckerVor,
   verwerfeSpoolerAuftraege as verwerfeSpoolerAuftraegeStandard
 } from './winspool'
 
@@ -22,6 +29,26 @@ export const PRUEF_INTERVALL_MS = 60_000
 /** Fehlertext der Ampel, wenn die Warteschlange fehlt (falscher Name, Drucker nicht eingerichtet). */
 export function fehlerWarteschlangeFehlt(druckerName: string): string {
   return `Warteschlange "${druckerName}" fehlt`
+}
+
+/**
+ * Lesbarer Hinweis fuer den Bildschirm, wenn die Warteschlange fehlt: nennt den Vorschlag oder,
+ * ohne eindeutigen Kandidaten, die installierten Warteschlangen.
+ */
+export function meldungWarteschlangeFehlt(
+  druckerName: string,
+  vorschlag: string | null,
+  liste: DruckerInfo[]
+): string {
+  const kopf = `${fehlerWarteschlangeFehlt(druckerName)}.`
+  if (vorschlag !== null) {
+    return `${kopf} Gefunden: "${vorschlag}" – in den Einstellungen auswählen.`
+  }
+  if (liste.length === 0) {
+    return `${kopf} Keine installierten Drucker gefunden – Epson-Treiber installieren und Drucker anschliessen.`
+  }
+  const namen = liste.map((d) => `"${d.name}"`).join(', ')
+  return `${kopf} Installiert: ${namen} – den richtigen in den Einstellungen auswählen.`
 }
 
 export interface MarkiereFelder {
@@ -54,13 +81,18 @@ export interface DruckWorkerOptionen {
   verwerfeSpoolerAuftraege?: (druckerName: string) => Promise<number>
   /** nur fuer Tests: ersetzt druckerVorhanden aus winspool.ts */
   druckerVorhanden?: (druckerName: string) => Promise<boolean>
+  /** nur fuer Tests: ersetzt listeDrucker aus winspool.ts (wird nur bei fehlender Warteschlange gerufen) */
+  listeDrucker?: () => Promise<DruckerInfo[]>
   /** Abstand der wiederholten Warteschlangen-Pruefung im Leerlauf (winspool), Standard 60 s */
   pruefIntervallMs?: number
   /** Protokollausgabe, Standard console */
   log?: (meldung: string) => void
 }
 
-export interface DruckWorkerStatus extends Pick<DruckStatus, 'ampel' | 'letzterFehler'> {
+export interface DruckWorkerStatus extends Pick<
+  DruckStatus,
+  'ampel' | 'letzterFehler' | 'vorschlag' | 'meldung'
+> {
   transport: TransportName
   /** true, waehrend ein Auftrag beim Transport ist */
   inArbeit: boolean
@@ -71,6 +103,8 @@ export interface DruckWorkerStatus extends Pick<DruckStatus, 'ampel' | 'letzterF
   beimStartVerworfen: { auftraege: number; spooler: number }
   /** Ergebnis der letzten Warteschlangen-Pruefung (winspool); null = noch nicht geprueft / Simulator */
   warteschlangeVorhanden: boolean | null
+  /** Warteschlange, mit der der Worker gerade arbeitet (nach setzeDruckerName der neue Name) */
+  druckerName: string | null
 }
 
 export interface DruckWorker {
@@ -81,6 +115,11 @@ export interface DruckWorker {
   status(): DruckWorkerStatus
   /** prueft sofort, ob die Warteschlange existiert (winspool; sonst ohne Wirkung) */
   pruefeWarteschlange(): Promise<void>
+  /**
+   * Wechselt die Warteschlange zur Laufzeit (Einstellung drucker_name geaendert): Transport und
+   * Pruefung verwenden sofort den neuen Namen; die Warteschlange wird gleich neu geprueft.
+   */
+  setzeDruckerName(name: string): Promise<void>
   stop(): void
 }
 
@@ -92,16 +131,23 @@ function fehlerText(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
 }
 
+function bereinigterName(name: string | undefined): string | null {
+  if (name === undefined) return null
+  const getrimmt = name.trim()
+  return getrimmt === '' ? null : getrimmt
+}
+
 export function startDruckWorker(optionen: DruckWorkerOptionen): DruckWorker {
   const { quelle, transport, bytesOrdner } = optionen
   const intervallMs = optionen.intervallMs ?? 500
   const log = optionen.log ?? ((m: string): void => console.log(`[druck] ${m}`))
   const verwerfeSpooler = optionen.verwerfeSpoolerAuftraege ?? verwerfeSpoolerAuftraegeStandard
   const pruefeVorhanden = optionen.druckerVorhanden ?? druckerVorhandenStandard
+  const listeInstallierte =
+    optionen.listeDrucker ?? ((): Promise<DruckerInfo[]> => listeDruckerStandard())
   const pruefIntervallMs = optionen.pruefIntervallMs ?? PRUEF_INTERVALL_MS
-  const druckerName =
-    optionen.druckerName !== undefined && optionen.druckerName !== '' ? optionen.druckerName : null
-  const mitSpooler = transport.name === 'winspool' && druckerName !== null
+  let druckerName = bereinigterName(optionen.druckerName)
+  const mitSpooler = (): boolean => transport.name === 'winspool' && druckerName !== null
 
   let gestoppt = false
   let timer: ReturnType<typeof setTimeout> | null = null
@@ -111,39 +157,64 @@ export function startDruckWorker(optionen: DruckWorkerOptionen): DruckWorker {
   const zustand: DruckWorkerStatus = {
     ampel: 'ok',
     letzterFehler: null,
+    vorschlag: null,
+    meldung: null,
     transport: transport.name,
     inArbeit: false,
     erledigt: 0,
     fehlgeschlagen: 0,
     beimStartVerworfen: { auftraege: 0, spooler: 0 },
-    warteschlangeVorhanden: null
+    warteschlangeVorhanden: null,
+    druckerName
+  }
+
+  /** Installierte Drucker holen; ein Fehler ergibt eine leere Liste (der Hinweis bleibt trotzdem). */
+  async function installierteDrucker(): Promise<DruckerInfo[]> {
+    try {
+      return await listeInstallierte()
+    } catch (e) {
+      log(`Installierte Drucker konnten nicht gelesen werden: ${fehlerText(e)}`)
+      return []
+    }
   }
 
   /**
-   * Prueft, ob die Warteschlange existiert. Fehlt sie: Ampel "pruefen" mit Hinweis. Ist sie wieder da
-   * und der letzte Fehler war genau dieser Hinweis, wird die Ampel wieder gruen (kein Auftrag ging verloren).
+   * Prueft, ob die Warteschlange existiert. Fehlt sie: Ampel "pruefen" mit Hinweis und Vorschlag aus
+   * den installierten Druckern. Ist sie wieder da und der letzte Fehler war genau dieser Hinweis,
+   * wird die Ampel wieder gruen (kein Auftrag ging verloren).
    */
   async function pruefeWarteschlange(): Promise<void> {
-    if (!mitSpooler || druckerName === null) return
+    if (!mitSpooler() || druckerName === null) return
+    const name = druckerName
     letztePruefung = Date.now()
     let vorhanden: boolean
     try {
-      vorhanden = await pruefeVorhanden(druckerName)
+      vorhanden = await pruefeVorhanden(name)
     } catch (e) {
       log(`Warteschlange konnte nicht geprueft werden: ${fehlerText(e)}`)
       return
     }
-    const hinweis = fehlerWarteschlangeFehlt(druckerName)
+    if (name !== druckerName) return // Name wurde waehrenddessen gewechselt; naechste Pruefung zaehlt
+    const hinweis = fehlerWarteschlangeFehlt(name)
     const vorher = zustand.warteschlangeVorhanden
     zustand.warteschlangeVorhanden = vorhanden
     if (!vorhanden) {
+      const liste = await installierteDrucker()
+      if (name !== druckerName) return
+      const vorschlag = schlageDruckerVor(liste, name)?.name ?? null
       zustand.ampel = 'pruefen'
       zustand.letzterFehler = hinweis
-      if (vorher !== false) log(hinweis)
-    } else if (zustand.letzterFehler === hinweis) {
+      zustand.vorschlag = vorschlag
+      zustand.meldung = meldungWarteschlangeFehlt(name, vorschlag, liste)
+      if (vorher !== false) log(zustand.meldung)
+      return
+    }
+    zustand.vorschlag = null
+    zustand.meldung = null
+    if (zustand.letzterFehler === hinweis) {
       zustand.ampel = 'ok'
       zustand.letzterFehler = null
-      log(`Warteschlange "${druckerName}" wieder vorhanden`)
+      log(`Warteschlange "${name}" wieder vorhanden`)
     }
   }
 
@@ -221,7 +292,7 @@ export function startDruckWorker(optionen: DruckWorkerOptionen): DruckWorker {
       verarbeiteOffene()
         .then(() => {
           // Im Leerlauf periodisch die Warteschlange pruefen (nur winspool)
-          if (!gestoppt && mitSpooler && Date.now() - letztePruefung >= pruefIntervallMs) {
+          if (!gestoppt && mitSpooler() && Date.now() - letztePruefung >= pruefIntervallMs) {
             return pruefeWarteschlange()
           }
           return undefined
@@ -259,6 +330,30 @@ export function startDruckWorker(optionen: DruckWorkerOptionen): DruckWorker {
     }
   }
 
+  /** Neuer Warteschlangenname aus den Einstellungen: Transport umstellen, Zustand zuruecksetzen, pruefen. */
+  async function setzeDruckerName(name: string): Promise<void> {
+    const neu = bereinigterName(name)
+    if (neu === null) {
+      log('Leerer Druckername wird ignoriert')
+      return
+    }
+    if (neu === druckerName) return
+    const alterHinweis = druckerName !== null ? fehlerWarteschlangeFehlt(druckerName) : null
+    druckerName = neu
+    zustand.druckerName = neu
+    transport.setzeDruckerName?.(neu)
+    zustand.warteschlangeVorhanden = null
+    zustand.vorschlag = null
+    zustand.meldung = null
+    if (alterHinweis !== null && zustand.letzterFehler === alterHinweis) {
+      // Der alte "fehlt"-Hinweis gilt nicht mehr; die Pruefung unten setzt den neuen Zustand.
+      zustand.letzterFehler = null
+      zustand.ampel = 'ok'
+    }
+    log(`Warteschlange gewechselt auf "${neu}"`)
+    await pruefeWarteschlange()
+  }
+
   const bereit = aufraeumenBeimStart().then(() => planeNaechstenDurchlauf())
 
   return {
@@ -266,6 +361,7 @@ export function startDruckWorker(optionen: DruckWorkerOptionen): DruckWorker {
     verarbeiteOffene: () => bereit.then(() => verarbeiteOffene()),
     status: () => ({ ...zustand, beimStartVerworfen: { ...zustand.beimStartVerworfen } }),
     pruefeWarteschlange: () => bereit.then(() => pruefeWarteschlange()),
+    setzeDruckerName: (name) => bereit.then(() => setzeDruckerName(name)),
     stop: () => {
       gestoppt = true
       if (timer !== null) {

@@ -24,13 +24,21 @@ import {
 } from 'electron'
 import { optimizer } from '@electron-toolkit/utils'
 import { serve, type ServerType } from '@hono/node-server'
-import { erstelleTransport, startDruckWorker, type DruckWorker } from '@print/index'
+import {
+  erstelleTransport,
+  listeDrucker,
+  sollAutomatischUebernehmen,
+  startDruckWorker,
+  type DruckWorker
+} from '@print/index'
 import {
   erstelleDruckQuelle,
   erstelleKassenApp,
   fuehreSeedAus,
+  leseEinstellungsSeed,
   migriere,
   oeffneDb,
+  STANDARD_EINSTELLUNGEN,
   type DatabaseSync,
   type Repos
 } from '@server/index'
@@ -204,6 +212,9 @@ async function starteLaufzeit(): Promise<Laufzeit> {
     nachDruckauftrag: () => {
       void worker?.verarbeiteOffene()
     },
+    listeDrucker: () => listeDrucker(),
+    // Druckername in den Einstellungen geaendert: der laufende Worker wechselt sofort die Warteschlange.
+    setzeDruckerName: (name) => worker?.setzeDruckerName(name),
     // Läuft nach der Antwort der Abschluss-Route; der Pfad landet über den Server in kassentag.pdf_pfad.
     nachAbschluss: async (bericht) => {
       let pdfPfad: string | null = null
@@ -255,8 +266,57 @@ async function starteLaufzeit(): Promise<Laufzeit> {
   log(
     `Druck-Transport ${transport.name}, Drucker "${einstellungen.druckerName}", Skript ${skriptPfad}`
   )
+  await druckerVorschlagBehandeln(repos, worker, einstellungen.druckerName)
 
   return { db, repos, worker, server, port }
+}
+
+/** Standard-Druckername aus resources/seed.default.json (Fallback: eingebauter Standard). */
+function standardDruckerName(): string {
+  try {
+    return (
+      leseEinstellungsSeed([seedDefaultPfad]).seed.druckerName ?? STANDARD_EINSTELLUNGEN.druckerName
+    )
+  } catch (e) {
+    log(`seed.default.json konnte nicht gelesen werden: ${fehlerText(e)}`)
+    return STANDARD_EINSTELLUNGEN.druckerName
+  }
+}
+
+/**
+ * Fehlt die eingestellte Warteschlange beim Start, steht der Vorschlag des Workers im Protokoll.
+ * Uebernommen wird er nur, wenn genau ein Kandidat existiert UND die Einstellung noch auf dem
+ * Standardwert aus seed.default.json steht (frisch installierter Laptop mit Epson-Treiber);
+ * ein bewusst gewaehlter Name bleibt unangetastet, der Kassier waehlt dann in den Einstellungen.
+ */
+async function druckerVorschlagBehandeln(
+  repos: Repos,
+  worker: DruckWorker,
+  eingestellt: string
+): Promise<void> {
+  const status = worker.status()
+  if (status.transport !== 'winspool' || status.warteschlangeVorhanden !== false) return
+  const vorschlag = status.vorschlag
+  log(
+    `Warteschlange "${eingestellt}" fehlt, Vorschlag ${vorschlag !== null ? `"${vorschlag}"` : 'keiner'}` +
+      (status.meldung !== null ? ` (${status.meldung})` : '')
+  )
+  if (
+    vorschlag === null ||
+    !sollAutomatischUebernehmen(eingestellt, standardDruckerName(), vorschlag)
+  ) {
+    return
+  }
+  try {
+    repos.einstellung.aktualisiere({ druckerName: vorschlag })
+    await worker.setzeDruckerName(vorschlag)
+    log(
+      `Drucker automatisch uebernommen: "${vorschlag}" statt Standard "${eingestellt}" ` +
+        `(Warteschlange ${worker.status().warteschlangeVorhanden === true ? 'vorhanden' : 'noch nicht bestaetigt'})`
+    )
+  } catch (e) {
+    log(`Drucker "${vorschlag}" konnte nicht uebernommen werden: ${fehlerText(e)}`)
+  }
 }
 
 // ---------------------------------------------------------------- Beenden

@@ -218,6 +218,47 @@ describe('api-Client', () => {
     }
   })
 
+  it('drucker(): GET /api/drucker liefert Liste, eingestellten Namen und Vorschlag, ohne PIN', async () => {
+    const aufrufe: Aufruf[] = []
+    const antwort = {
+      drucker: [{ name: 'EPSON TM-T20 Receipt', port: 'ESDPRT001', treiber: 'EPSON TM-T20 Receipt5', status: 'Normal' }],
+      eingestellt: 'TM-T20II',
+      vorschlag: 'EPSON TM-T20 Receipt'
+    }
+    const api = erstelleApi(fakeFetch(200, antwort, aufrufe), '')
+    const d = await api.drucker()
+    expect(d.drucker[0]?.name).toBe('EPSON TM-T20 Receipt')
+    expect(d.eingestellt).toBe('TM-T20II')
+    expect(d.vorschlag).toBe('EPSON TM-T20 Receipt')
+    expect(aufrufe[0]?.url).toBe('/api/drucker')
+    expect(aufrufe[0]?.init.method).toBe('GET')
+    expect(aufrufe[0]?.init.body).toBeUndefined()
+    expect((aufrufe[0]?.init.headers as Record<string, string>)[PIN_HEADER]).toBeUndefined()
+  })
+
+  it('druckerUebernehmen(): POST /api/drucker/uebernehmen mit { name } und X-Pin, liefert Einstellungen; 403 pin_falsch', async () => {
+    const aufrufe: Aufruf[] = []
+    const api = erstelleApi(fakeFetch(200, { druckerName: 'EPSON TM-T20 Receipt', kassenPraefix: 'K1' }, aufrufe), '')
+    const e = await api.druckerUebernehmen('EPSON TM-T20 Receipt', '1234')
+    expect(e.druckerName).toBe('EPSON TM-T20 Receipt')
+    expect(aufrufe[0]?.url).toBe('/api/drucker/uebernehmen')
+    expect(aufrufe[0]?.init.method).toBe('POST')
+    expect(aufrufe[0]?.init.body).toBe(JSON.stringify({ name: 'EPSON TM-T20 Receipt' }))
+    const headers = aufrufe[0]?.init.headers as Record<string, string>
+    expect(headers[PIN_HEADER]).toBe('1234')
+    expect(headers['Content-Type']).toBe('application/json')
+
+    const verweigert = erstelleApi(fakeFetch(403, { fehler: 'pin_falsch', meldung: 'PIN falsch' }, []), '')
+    try {
+      await verweigert.druckerUebernehmen('EPSON TM-T20 Receipt', '0000')
+      expect.unreachable()
+    } catch (e2) {
+      expect(e2).toBeInstanceOf(ApiFehler)
+      expect((e2 as ApiFehler).status).toBe(403)
+      expect((e2 as ApiFehler).fehler).toBe('pin_falsch')
+    }
+  })
+
   it('spendeErfassen(): POST /api/spende mit SpendeAnfrage als JSON-Body, ohne PIN', async () => {
     const aufrufe: Aufruf[] = []
     const spende = { id: 'sp1', kassentagId: 'k1', verkaufId: 'v1', zeit: '2026-09-19T14:32:05', typ: 'bar_chf', betrag: 200, kursX10000: null, betragChfRappen: 200, storniertAm: null }

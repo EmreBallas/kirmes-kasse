@@ -10,6 +10,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import type { DruckerInfo } from '@core/types'
 import type { DruckErgebnis, DruckTransport } from './transport'
 
 export const POWERSHELL = 'powershell.exe'
@@ -242,6 +243,121 @@ export async function druckerVorhanden(
   return parseVorhanden(ergebnis.stdout)
 }
 
+// ---------------------------------------------------------------- Installierte Drucker
+
+/**
+ * PowerShell-Befehl: alle installierten Warteschlangen als JSON (Einzelobjekt oder Array).
+ * PrinterStatus wird als Text ausgegeben ("Normal", "Offline" ...), nicht als Enum-Zahl.
+ */
+export function baueListeBefehl(): string {
+  return (
+    'Get-Printer | Select-Object Name,PortName,DriverName,' +
+    "@{n='PrinterStatus';e={[string]$_.PrinterStatus}} | ConvertTo-Json -Compress"
+  )
+}
+
+function leseTextOderLeer(objekt: Record<string, unknown>, feld: string): string {
+  const wert = objekt[feld]
+  if (typeof wert === 'string') return wert.trim()
+  if (typeof wert === 'number' && Number.isFinite(wert)) return String(wert)
+  return ''
+}
+
+function druckerInfoAus(roh: unknown): DruckerInfo | null {
+  if (typeof roh !== 'object' || roh === null || Array.isArray(roh)) return null
+  const objekt = roh as Record<string, unknown>
+  const name = leseTextOderLeer(objekt, 'Name')
+  if (name === '') return null
+  return {
+    name,
+    port: leseTextOderLeer(objekt, 'PortName'),
+    treiber: leseTextOderLeer(objekt, 'DriverName'),
+    status: leseTextOderLeer(objekt, 'PrinterStatus')
+  }
+}
+
+/**
+ * Liest die Ausgabe von baueListeBefehl: ein Objekt (genau ein Drucker), ein Array oder nichts.
+ * Unbrauchbare Ausgabe ergibt eine leere Liste, nie eine Ausnahme.
+ */
+export function parseDruckerListe(stdout: string): DruckerInfo[] {
+  const text = stdout.replace(/^\uFEFF/, '').trim()
+  const start = text.search(/[[{]/)
+  if (start < 0) return []
+  let roh: unknown
+  try {
+    roh = JSON.parse(text.slice(start))
+  } catch {
+    return []
+  }
+  const eintraege = Array.isArray(roh) ? roh : [roh]
+  const liste: DruckerInfo[] = []
+  for (const e of eintraege) {
+    const info = druckerInfoAus(e)
+    if (info !== null) liste.push(info)
+  }
+  return liste
+}
+
+/** Alle installierten Warteschlangen; leere Liste, wenn PowerShell scheitert. */
+export async function listeDrucker(
+  ausfuehren: PowershellAusfuehrer = (a) => fuehrePowershellAus(a)
+): Promise<DruckerInfo[]> {
+  let ergebnis: ProzessErgebnis
+  try {
+    ergebnis = await ausfuehren(baueBefehlArgumente(baueListeBefehl()))
+  } catch {
+    return []
+  }
+  if (ergebnis.prozessFehler !== null) return []
+  return parseDruckerListe(ergebnis.stdout)
+}
+
+/** Namens-/Treibermuster, an denen ein Epson-Bondrucker zu erkennen ist (case-insensitiv). */
+export const EPSON_MUSTER = ['tm-t', 'tm-m', 'tm-u', 'epson tm'] as const
+/** Port-Praefixe eines direkt angeschlossenen Bondruckers (USB001, ESDPRT001 des Epson-Treibers). */
+export const BON_PORT_PRAEFIXE = ['usb', 'esdprt'] as const
+
+function gleicherName(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase()
+}
+
+/** true, wenn die Warteschlange nach einem Epson-Bondrucker aussieht (Name, Treiber oder Port). */
+export function istBondruckerKandidat(d: DruckerInfo): boolean {
+  const name = d.name.toLowerCase()
+  const treiber = d.treiber.toLowerCase()
+  const port = d.port.toLowerCase()
+  if (EPSON_MUSTER.some((m) => name.includes(m) || treiber.includes(m))) return true
+  return BON_PORT_PRAEFIXE.some((p) => port.startsWith(p))
+}
+
+/**
+ * Schlaegt bei einer Namensabweichung den passenden Drucker vor:
+ * - null, wenn ein Eintrag bereits so heisst wie gewuenscht (Windows vergleicht Namen ohne
+ *   Gross-/Kleinschreibung, deshalb auch hier) - dann ist alles gut;
+ * - sonst der EINZIGE Kandidat nach istBondruckerKandidat; bei mehreren oder keinem null.
+ */
+export function schlageDruckerVor(liste: DruckerInfo[], gewuenscht: string): DruckerInfo | null {
+  if (liste.some((d) => gleicherName(d.name, gewuenscht))) return null
+  const kandidaten = liste.filter(istBondruckerKandidat)
+  return kandidaten.length === 1 ? kandidaten[0] : null
+}
+
+/**
+ * Darf der Main den Vorschlag ohne Zutun uebernehmen? Nur, wenn es einen Vorschlag gibt UND die
+ * Einstellung noch auf dem Standardwert aus seed.default.json steht (niemand hat je einen Namen
+ * gewaehlt). Ein bewusst eingetragener Name wird nie automatisch ueberschrieben.
+ */
+export function sollAutomatischUebernehmen(
+  eingestellt: string,
+  standard: string,
+  vorschlag: string | null
+): boolean {
+  if (vorschlag === null || vorschlag.trim() === '') return false
+  if (standard.trim() === '') return false
+  return gleicherName(eingestellt, standard) && !gleicherName(eingestellt, vorschlag)
+}
+
 export interface WinspoolOptionen {
   druckerName: string
   /** absoluter Pfad zu tools/print-raw.ps1 */
@@ -254,16 +370,26 @@ export interface WinspoolOptionen {
 
 export class WinspoolTransport implements DruckTransport {
   readonly name = 'winspool' as const
-  readonly druckerName: string
   readonly skriptPfad: string
   readonly tempOrdner: string
   private readonly ausfuehren: PowershellAusfuehrer
+  private aktuellerDruckerName: string
 
   constructor(optionen: WinspoolOptionen) {
-    this.druckerName = optionen.druckerName
+    this.aktuellerDruckerName = optionen.druckerName
     this.skriptPfad = optionen.skriptPfad
     this.tempOrdner = optionen.tempOrdner ?? join(tmpdir(), 'kasse')
     this.ausfuehren = optionen.ausfuehren ?? ((a) => fuehrePowershellAus(a))
+  }
+
+  /** Warteschlange, an die gesendet wird (aus den Einstellungen, zur Laufzeit wechselbar). */
+  get druckerName(): string {
+    return this.aktuellerDruckerName
+  }
+
+  /** Wechselt die Warteschlange fuer alle folgenden Auftraege (DruckTransport.setzeDruckerName). */
+  setzeDruckerName(name: string): void {
+    this.aktuellerDruckerName = name
   }
 
   async senden(bytes: Uint8Array, bezeichnung: string): Promise<DruckErgebnis> {

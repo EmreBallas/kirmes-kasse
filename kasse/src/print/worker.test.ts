@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import type { Druckauftrag, DruckauftragStatus } from '@core/types'
+import type { Druckauftrag, DruckauftragStatus, DruckerInfo } from '@core/types'
 import type { DruckErgebnis, DruckTransport } from './transport'
 import {
   GRUND_APP_NEUSTART,
   bezeichnungFuer,
   fehlerWarteschlangeFehlt,
+  meldungWarteschlangeFehlt,
   startDruckWorker,
   type DruckQuelle,
   type MarkiereFelder
@@ -95,9 +96,14 @@ class FakeTransport implements DruckTransport {
     fehler: null
   })
   verzoegerungMs = 5
+  druckerNamen: string[] = []
 
   constructor(name: 'winspool' | 'simulator' = 'simulator') {
     this.name = name
+  }
+
+  setzeDruckerName(name: string): void {
+    this.druckerNamen.push(name)
   }
 
   async senden(bytes: Uint8Array, bezeichnung: string): Promise<DruckErgebnis> {
@@ -113,6 +119,19 @@ class FakeTransport implements DruckTransport {
 
 const warte = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 const still = (): void => undefined
+
+const EPSON: DruckerInfo = {
+  name: 'EPSON TM-T20 Receipt',
+  port: 'ESDPRT001',
+  treiber: 'EPSON TM-T20 Receipt',
+  status: 'Normal'
+}
+const PDF: DruckerInfo = {
+  name: 'Microsoft Print to PDF',
+  port: 'PORTPROMPT:',
+  treiber: 'Microsoft Print To PDF',
+  status: 'Normal'
+}
 
 describe('startDruckWorker', () => {
   it('Erfolg: queued -> sent -> done mit spoolerJobId, Ampel ok', async () => {
@@ -404,6 +423,7 @@ describe('startDruckWorker', () => {
       druckerName: 'Falscher Name',
       verwerfeSpoolerAuftraege: async () => 0,
       druckerVorhanden: async () => false,
+      listeDrucker: async () => [],
       log: still
     })
     await worker.bereit
@@ -434,6 +454,7 @@ describe('startDruckWorker', () => {
         pruefungen++
         return vorhanden
       },
+      listeDrucker: async () => [],
       log: still
     })
     await worker.bereit
@@ -489,6 +510,7 @@ describe('startDruckWorker', () => {
         geprueft = true
         return false
       },
+      listeDrucker: async () => [EPSON],
       log: still
     })
     await worker.bereit
@@ -498,6 +520,192 @@ describe('startDruckWorker', () => {
     expect(geprueft).toBe(false)
     expect(worker.status().ampel).toBe('ok')
     expect(worker.status().warteschlangeVorhanden).toBeNull()
+  })
+
+  it('fehlende Warteschlange: Vorschlag und Meldung aus den installierten Druckern (Beispiel Kassen-Laptop)', async () => {
+    const quelle = new FakeQuelle()
+    const transport = new FakeTransport('winspool')
+    let gelistet = 0
+    const worker = startDruckWorker({
+      quelle,
+      transport,
+      bytesOrdner: '.',
+      intervallMs: 10,
+      druckerName: 'TM-T20II',
+      verwerfeSpoolerAuftraege: async () => 0,
+      druckerVorhanden: async () => false,
+      listeDrucker: async () => {
+        gelistet++
+        return [EPSON, PDF]
+      },
+      log: still
+    })
+    await worker.bereit
+    worker.stop()
+    const st = worker.status()
+    expect(gelistet).toBe(1)
+    expect(st.ampel).toBe('pruefen')
+    expect(st.letzterFehler).toBe(fehlerWarteschlangeFehlt('TM-T20II'))
+    expect(st.vorschlag).toBe('EPSON TM-T20 Receipt')
+    expect(st.meldung).toBe(
+      'Warteschlange "TM-T20II" fehlt. Gefunden: "EPSON TM-T20 Receipt" – in den Einstellungen auswählen.'
+    )
+    expect(st.druckerName).toBe('TM-T20II')
+  })
+
+  it('fehlende Warteschlange ohne eindeutigen Kandidaten: kein Vorschlag, Meldung nennt die installierten', async () => {
+    const quelle = new FakeQuelle()
+    const worker = startDruckWorker({
+      quelle,
+      transport: new FakeTransport('winspool'),
+      bytesOrdner: '.',
+      intervallMs: 10,
+      druckerName: 'TM-T20II',
+      verwerfeSpoolerAuftraege: async () => 0,
+      druckerVorhanden: async () => false,
+      listeDrucker: async () => [PDF],
+      log: still
+    })
+    await worker.bereit
+    worker.stop()
+    expect(worker.status().vorschlag).toBeNull()
+    expect(worker.status().meldung).toBe(
+      'Warteschlange "TM-T20II" fehlt. Installiert: "Microsoft Print to PDF" – den richtigen in den Einstellungen auswählen.'
+    )
+  })
+
+  it('fehlende Warteschlange: Listen-Fehler ergibt Meldung ohne Vorschlag, Worker laeuft weiter', async () => {
+    const quelle = new FakeQuelle()
+    const worker = startDruckWorker({
+      quelle,
+      transport: new FakeTransport('winspool'),
+      bytesOrdner: '.',
+      intervallMs: 10,
+      druckerName: 'TM-T20II',
+      verwerfeSpoolerAuftraege: async () => 0,
+      druckerVorhanden: async () => false,
+      listeDrucker: async () => {
+        throw new Error('PowerShell fehlt')
+      },
+      log: still
+    })
+    await worker.bereit
+    worker.stop()
+    expect(worker.status().ampel).toBe('pruefen')
+    expect(worker.status().vorschlag).toBeNull()
+    expect(worker.status().meldung).toBe(meldungWarteschlangeFehlt('TM-T20II', null, []))
+  })
+
+  it('setzeDruckerName: Transport wechselt, Warteschlange wird sofort neu geprueft, Ampel gruen', async () => {
+    const quelle = new FakeQuelle()
+    const transport = new FakeTransport('winspool')
+    const geprueft: string[] = []
+    const worker = startDruckWorker({
+      quelle,
+      transport,
+      bytesOrdner: '.',
+      intervallMs: 10,
+      pruefIntervallMs: 10_000,
+      druckerName: 'TM-T20II',
+      verwerfeSpoolerAuftraege: async () => 0,
+      druckerVorhanden: async (n) => {
+        geprueft.push(n)
+        return n === 'EPSON TM-T20 Receipt'
+      },
+      listeDrucker: async () => [EPSON, PDF],
+      log: still
+    })
+    await worker.bereit
+    expect(worker.status().ampel).toBe('pruefen')
+    expect(worker.status().vorschlag).toBe('EPSON TM-T20 Receipt')
+
+    await worker.setzeDruckerName('EPSON TM-T20 Receipt')
+    worker.stop()
+    const st = worker.status()
+    expect(transport.druckerNamen).toEqual(['EPSON TM-T20 Receipt'])
+    expect(geprueft).toEqual(['TM-T20II', 'EPSON TM-T20 Receipt'])
+    expect(st.druckerName).toBe('EPSON TM-T20 Receipt')
+    expect(st.warteschlangeVorhanden).toBe(true)
+    expect(st.ampel).toBe('ok')
+    expect(st.letzterFehler).toBeNull()
+    expect(st.vorschlag).toBeNull()
+    expect(st.meldung).toBeNull()
+  })
+
+  it('setzeDruckerName: gleicher oder leerer Name aendert nichts; fehlgeschlagener Auftrag bleibt pruefen', async () => {
+    const quelle = new FakeQuelle()
+    const transport = new FakeTransport('winspool')
+    transport.antwort = () => ({ ok: false, status: 'error', jobId: null, fehler: 'USB gezogen' })
+    let pruefungen = 0
+    const worker = startDruckWorker({
+      quelle,
+      transport,
+      bytesOrdner: '.',
+      intervallMs: 10,
+      pruefIntervallMs: 10_000,
+      druckerName: 'TM-T20II',
+      verwerfeSpoolerAuftraege: async () => 0,
+      druckerVorhanden: async () => {
+        pruefungen++
+        return true
+      },
+      listeDrucker: async () => [],
+      log: still
+    })
+    await worker.bereit
+    expect(pruefungen).toBe(1)
+    await worker.setzeDruckerName('TM-T20II')
+    await worker.setzeDruckerName('   ')
+    expect(pruefungen).toBe(1)
+    expect(transport.druckerNamen).toEqual([])
+
+    quelle.einreihen('f1')
+    await worker.verarbeiteOffene()
+    expect(worker.status().ampel).toBe('pruefen')
+    await worker.setzeDruckerName('EPSON TM-T20 Receipt')
+    worker.stop()
+    expect(pruefungen).toBe(2)
+    expect(worker.status().ampel).toBe('pruefen')
+    expect(worker.status().letzterFehler).toBe('USB gezogen')
+    expect(worker.status().druckerName).toBe('EPSON TM-T20 Receipt')
+  })
+
+  it('setzeDruckerName beim Simulator: nur der Name wechselt, keine Pruefung', async () => {
+    const quelle = new FakeQuelle()
+    const transport = new FakeTransport('simulator')
+    let geprueft = false
+    const worker = startDruckWorker({
+      quelle,
+      transport,
+      bytesOrdner: '.',
+      intervallMs: 10,
+      druckerName: 'TM-T20II',
+      druckerVorhanden: async () => {
+        geprueft = true
+        return false
+      },
+      listeDrucker: async () => [],
+      log: still
+    })
+    await worker.bereit
+    await worker.setzeDruckerName('EPSON TM-T20 Receipt')
+    worker.stop()
+    expect(geprueft).toBe(false)
+    expect(worker.status().druckerName).toBe('EPSON TM-T20 Receipt')
+    expect(worker.status().ampel).toBe('ok')
+    expect(transport.druckerNamen).toEqual(['EPSON TM-T20 Receipt'])
+  })
+
+  it('meldungWarteschlangeFehlt: drei Faelle', () => {
+    expect(meldungWarteschlangeFehlt('X', 'Y', [EPSON])).toBe(
+      'Warteschlange "X" fehlt. Gefunden: "Y" – in den Einstellungen auswählen.'
+    )
+    expect(meldungWarteschlangeFehlt('X', null, [])).toBe(
+      'Warteschlange "X" fehlt. Keine installierten Drucker gefunden – Epson-Treiber installieren und Drucker anschliessen.'
+    )
+    expect(meldungWarteschlangeFehlt('X', null, [EPSON, PDF])).toBe(
+      'Warteschlange "X" fehlt. Installiert: "EPSON TM-T20 Receipt", "Microsoft Print to PDF" – den richtigen in den Einstellungen auswählen.'
+    )
   })
 
   it('bezeichnungFuer', () => {

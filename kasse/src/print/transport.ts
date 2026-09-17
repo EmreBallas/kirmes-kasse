@@ -21,4 +21,9 @@ export interface DruckTransport {
   name: TransportName
   /** Sendet die fertigen ESC/POS-Bytes; wirft nie, Fehler kommen als DruckErgebnis zurueck. */
   senden(bytes: Uint8Array, bezeichnung: string): Promise<DruckErgebnis>
+  /**
+   * Optional: Warteschlangenname zur Laufzeit wechseln (winspool), damit ein in den Einstellungen
+   * neu gewaehlter Drucker ohne Neustart der Kasse benutzt wird.
+   */
+  setzeDruckerName?(name: string): void
 }

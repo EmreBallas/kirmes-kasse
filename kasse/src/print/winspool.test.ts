@@ -2,18 +2,25 @@ import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import type { DruckerInfo } from '@core/types'
 import {
   WinspoolTransport,
   baueBefehlArgumente,
+  baueListeBefehl,
   baueSkriptArgumente,
   baueVerwerfenBefehl,
   baueVorhandenBefehl,
   druckerVorhanden,
+  istBondruckerKandidat,
+  listeDrucker,
   parseAnzahl,
+  parseDruckerListe,
   parseSkriptAusgabe,
   parseSkriptJson,
   parseVorhanden,
   psString,
+  schlageDruckerVor,
+  sollAutomatischUebernehmen,
   verwerfeSpoolerAuftraege,
   type ProzessErgebnis
 } from './winspool'
@@ -225,6 +232,158 @@ describe('PowerShell-Befehle fuer Spooler', () => {
   })
 })
 
+// ---------------------------------------------------------------- Installierte Drucker
+
+const EPSON: DruckerInfo = {
+  name: 'EPSON TM-T20 Receipt',
+  port: 'ESDPRT001',
+  treiber: 'EPSON TM-T20 Receipt',
+  status: 'Normal'
+}
+const PDF: DruckerInfo = {
+  name: 'Microsoft Print to PDF',
+  port: 'PORTPROMPT:',
+  treiber: 'Microsoft Print To PDF',
+  status: 'Normal'
+}
+const GENERIC_USB: DruckerInfo = {
+  name: 'TM-T20II',
+  port: 'USB001',
+  treiber: 'Generic / Text Only',
+  status: 'Normal'
+}
+
+describe('Installierte Drucker (Get-Printer)', () => {
+  it('baueListeBefehl: Get-Printer mit Name, Port, Treiber, Status als JSON', () => {
+    const b = baueListeBefehl()
+    expect(b).toContain('Get-Printer')
+    expect(b).toContain('Select-Object Name,PortName,DriverName')
+    expect(b).toContain('PrinterStatus')
+    expect(b).toContain('ConvertTo-Json -Compress')
+  })
+
+  it('parseDruckerListe: Array', () => {
+    const stdout =
+      '[{"Name":"EPSON TM-T20 Receipt","PortName":"ESDPRT001","DriverName":"EPSON TM-T20 Receipt","PrinterStatus":"Normal"},' +
+      '{"Name":"Microsoft Print to PDF","PortName":"PORTPROMPT:","DriverName":"Microsoft Print To PDF","PrinterStatus":"Normal"}]\r\n'
+    expect(parseDruckerListe(stdout)).toEqual([EPSON, PDF])
+  })
+
+  it('parseDruckerListe: Einzelobjekt (genau ein Drucker installiert)', () => {
+    const stdout =
+      '{"Name":"EPSON TM-T20 Receipt","PortName":"ESDPRT001","DriverName":"EPSON TM-T20 Receipt","PrinterStatus":"Normal"}'
+    expect(parseDruckerListe(stdout)).toEqual([EPSON])
+  })
+
+  it('parseDruckerListe: BOM, Muell davor, Zahl-Status, fehlende Felder, Eintraege ohne Namen', () => {
+    const stdout =
+      '\uFEFFWARNUNG: irgendwas\n[{"Name":"A","PortName":null,"DriverName":"X","PrinterStatus":0},{"Name":"","PortName":"USB001"},{"Name":"B"}]'
+    expect(parseDruckerListe(stdout)).toEqual([
+      { name: 'A', port: '', treiber: 'X', status: '0' },
+      { name: 'B', port: '', treiber: '', status: '' }
+    ])
+  })
+
+  it('parseDruckerListe: leer, null oder kaputt -> leere Liste', () => {
+    expect(parseDruckerListe('')).toEqual([])
+    expect(parseDruckerListe('null')).toEqual([])
+    expect(parseDruckerListe('{"Name":')).toEqual([])
+    expect(parseDruckerListe('nur Text')).toEqual([])
+    expect(parseDruckerListe('"ein String"')).toEqual([])
+  })
+
+  it('listeDrucker: Fake-Ausfuehrer bekommt den Befehl, Ergebnis wird geparst', async () => {
+    const aufrufe: string[][] = []
+    const liste = await listeDrucker(async (a) => {
+      aufrufe.push(a)
+      return ok(
+        '{"Name":"EPSON TM-T20 Receipt","PortName":"ESDPRT001","DriverName":"EPSON TM-T20 Receipt","PrinterStatus":"Normal"}\n'
+      )
+    })
+    expect(liste).toEqual([EPSON])
+    expect(aufrufe[0].slice(0, 5)).toEqual([
+      '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-Command'
+    ])
+    expect(aufrufe[0][5]).toContain('Get-Printer')
+  })
+
+  it('listeDrucker: Prozessfehler oder Ausnahme -> leere Liste, nichts fliegt', async () => {
+    expect(
+      await listeDrucker(async () => ({
+        stdout: '',
+        stderr: '',
+        exitCode: null,
+        prozessFehler: 'ENOENT'
+      }))
+    ).toEqual([])
+    expect(
+      await listeDrucker(async () => {
+        throw new Error('kaputt')
+      })
+    ).toEqual([])
+    expect(await listeDrucker(async () => ok('', 1, 'Fehler'))).toEqual([])
+  })
+
+  it('istBondruckerKandidat: Name, Treiber oder Port', () => {
+    expect(istBondruckerKandidat(EPSON)).toBe(true)
+    expect(istBondruckerKandidat(PDF)).toBe(false)
+    expect(istBondruckerKandidat(GENERIC_USB)).toBe(true) // Name TM-T20II und Port USB001
+    expect(
+      istBondruckerKandidat({
+        name: 'Bon',
+        port: 'usb002',
+        treiber: 'Generic / Text Only',
+        status: ''
+      })
+    ).toBe(true)
+    expect(
+      istBondruckerKandidat({ name: 'Bon', port: 'LPT1:', treiber: 'EPSON TM-m30', status: '' })
+    ).toBe(true)
+    expect(
+      istBondruckerKandidat({ name: 'Kueche', port: 'LPT1:', treiber: 'Epson tm-u220', status: '' })
+    ).toBe(true)
+    expect(
+      istBondruckerKandidat({
+        name: 'Buero',
+        port: 'WSD-1234',
+        treiber: 'HP Universal',
+        status: ''
+      })
+    ).toBe(false)
+  })
+
+  it('schlageDruckerVor: Beispiel aus dem Problem -> EPSON TM-T20 Receipt', () => {
+    expect(schlageDruckerVor([EPSON, PDF], 'TM-T20II')).toEqual(EPSON)
+    expect(schlageDruckerVor([PDF, EPSON], 'TM-T20II')?.name).toBe('EPSON TM-T20 Receipt')
+  })
+
+  it('schlageDruckerVor: gewuenschter Name vorhanden -> null (alles gut), auch bei anderer Schreibweise', () => {
+    expect(schlageDruckerVor([GENERIC_USB, PDF], 'TM-T20II')).toBeNull()
+    expect(schlageDruckerVor([GENERIC_USB, PDF], 'tm-t20ii')).toBeNull()
+    expect(schlageDruckerVor([GENERIC_USB, PDF], ' TM-T20II ')).toBeNull()
+  })
+
+  it('schlageDruckerVor: kein oder mehrere Kandidaten -> null', () => {
+    expect(schlageDruckerVor([], 'TM-T20II')).toBeNull()
+    expect(schlageDruckerVor([PDF], 'TM-T20II')).toBeNull()
+    expect(schlageDruckerVor([EPSON, GENERIC_USB, PDF], 'Bondrucker')).toBeNull()
+  })
+
+  it('sollAutomatischUebernehmen: nur bei Standardname und Vorschlag', () => {
+    expect(sollAutomatischUebernehmen('TM-T20II', 'TM-T20II', 'EPSON TM-T20 Receipt')).toBe(true)
+    expect(sollAutomatischUebernehmen('tm-t20ii', 'TM-T20II', 'EPSON TM-T20 Receipt')).toBe(true)
+    expect(sollAutomatischUebernehmen('Bondrucker', 'TM-T20II', 'EPSON TM-T20 Receipt')).toBe(false)
+    expect(sollAutomatischUebernehmen('TM-T20II', 'TM-T20II', null)).toBe(false)
+    expect(sollAutomatischUebernehmen('TM-T20II', 'TM-T20II', '')).toBe(false)
+    expect(sollAutomatischUebernehmen('TM-T20II', 'TM-T20II', 'TM-T20II')).toBe(false)
+    expect(sollAutomatischUebernehmen('', '', 'EPSON TM-T20 Receipt')).toBe(false)
+  })
+})
+
 describe('WinspoolTransport.senden (ohne echten Druck)', () => {
   let ordner: string
   beforeEach(async () => {
@@ -339,7 +498,13 @@ describe('WinspoolTransport.senden (ohne echten Druck)', () => {
       tempOrdner: ordner,
       ausfuehren: async (a) => {
         aufrufe.push(a)
-        return { stdout: '', stderr: '', exitCode: null, prozessFehler: 'ENOENT', abgebrochen: false }
+        return {
+          stdout: '',
+          stderr: '',
+          exitCode: null,
+          prozessFehler: 'ENOENT',
+          abgebrochen: false
+        }
       }
     })
     const e = await transport.senden(Uint8Array.from([1]), 'test')
@@ -362,6 +527,27 @@ describe('WinspoolTransport.senden (ohne echten Druck)', () => {
     expect(e.status).toBe('error')
     expect(e.fehler).toContain('Boom')
     expect(await readdir(ordner)).toEqual([])
+  })
+
+  it('setzeDruckerName: folgende Auftraege gehen an die neue Warteschlange', async () => {
+    const aufrufe: string[][] = []
+    const t = new WinspoolTransport({
+      druckerName: 'TM-T20II',
+      skriptPfad: 'C:\\tools\\print-raw.ps1',
+      tempOrdner: ordner,
+      ausfuehren: async (a) => {
+        aufrufe.push(a)
+        return ok('{"jobId":1,"bytes":3,"status":"accepted"}', 0)
+      }
+    })
+    expect(t.druckerName).toBe('TM-T20II')
+    await t.senden(Uint8Array.from([1, 2, 3]), 'a')
+    t.setzeDruckerName('EPSON TM-T20 Receipt')
+    expect(t.druckerName).toBe('EPSON TM-T20 Receipt')
+    await t.senden(Uint8Array.from([1, 2, 3]), 'b')
+    const drucker = (a: string[]): string => a[a.indexOf('-Printer') + 1]
+    expect(drucker(aufrufe[0])).toBe('TM-T20II')
+    expect(drucker(aufrufe[1])).toBe('EPSON TM-T20 Receipt')
   })
 
   it('Standard-Temp-Ordner liegt unter %TEMP%\\kasse', () => {

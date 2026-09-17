@@ -12,16 +12,17 @@ Stand 12.9.2026. Gilt für den Dev-Rechner (Windows 11 IoT Enterprise LTSC 2024)
 ## 2. Warteschlange anlegen (neuer Rechner, PowerShell als Administrator)
 
 ```powershell
+Add-PrinterDriver -Name "Generic / Text Only"             # zuerst! sonst "Der angegebene Treiber ist nicht vorhanden"
 Get-PrinterPort | Where-Object Name -like 'USB*'          # welchen Port hat Windows angelegt?
 Add-Printer -Name "TM-T20II" -DriverName "Generic / Text Only" -PortName "USB001"
 Get-Printer -Name "TM-T20II" | Format-List Name, DriverName, PortName, PrinterStatus, JobCount
 ```
 
-- «Generic / Text Only» ist bei Windows dabei, kein Download. Bei RAW rendert er nichts; die Warteschlange ist nur der Zugang zum Port.
-- Hat Windows bereits eine eigene Warteschlange («EPSON TM-T20II») angelegt, bleibt sie; die App spricht nur «TM-T20II» (Name in den Einstellungen konfigurierbar).
+- «Generic / Text Only» ist bei Windows dabei, kein Download. Auf einem frischen Windows ist er aber noch nicht im Treiberspeicher eingetragen; `Add-Printer` scheitert dann mit «Der angegebene Treiber ist nicht vorhanden» (so geschehen am 17.9. auf dem Kassen-Laptop). `Add-PrinterDriver` trägt ihn ein und ist bei bereits vorhandenem Treiber unschädlich. Bei RAW rendert er nichts; die Warteschlange ist nur der Zugang zum Port.
+- Ist der Epson-Treiber (APD) installiert, hat er selbst eine Warteschlange angelegt («EPSON TM-T20 Receipt» oder «EPSON TM-T20II Receipt») auf seinem eigenen Port (ESDPRT001); einen USB*-Port gibt es dann nicht. Diese Warteschlange bleibt und wird in der Kasse unter Einstellungen aus der Liste der installierten Drucker gewählt (die Kasse schlägt sie selbst vor, wenn nur eine passt); eine zweite Warteschlange ist nicht nötig. Der RAW-Druckweg (Abschnitt 1) funktioniert über den Epson-Treiber genauso, weil der Spooler die Bytes bei RAW nicht anfasst.
 - Anderer USB-Port → evtl. USB002: `Set-Printer -Name "TM-T20II" -PortName "USB002"`. Deshalb am Kassen-Laptop immer denselben Port verwenden und markieren.
 - Auf Windows 11 24H2 meldet der Port den Monitor «Dynamic Print Monitor»; für RAW-Schreiben irrelevant.
-- **`tools/setup-laptop.ps1`** (am Sonntag schreiben, am Dienstag auf dem Laptop ausführen) fasst zusammen: Port ermitteln, Add-Printer (falls fehlt), Energieoptionen aus Abschnitt 5, Verknüpfung `C:\Kasse\Kasse.exe` in `shell:startup`, Windows-Update 7 Tage pausieren, Kontrollausgabe. Das Skript liegt auch auf dem USB-Stick (für ein Ersatzgerät).
+- **`tools/setup-laptop.ps1`** (am Sonntag schreiben, am Dienstag auf dem Laptop ausführen) fasst zusammen: Port ermitteln, Add-PrinterDriver (falls der Treiber fehlt), Add-Printer (falls die Warteschlange fehlt; bei installiertem Epson-Treiber ohne USB*-Port wird stattdessen die Epson-Warteschlange genannt), Energieoptionen aus Abschnitt 5, Verknüpfung `C:\Kasse\Kasse.exe` in `shell:startup`, Windows-Update 7 Tage pausieren, Kontrollausgabe mit der Liste aller Warteschlangen (Name, Port, Treiber). Das Skript liegt auch auf dem USB-Stick (für ein Ersatzgerät).
 
 ## 3. Testdruck
 
@@ -95,6 +96,8 @@ Thermorollen 80 mm (79.5 ± 0.5), max. 83 mm Durchmesser, Kern 12/18 mm, nicht a
 |---|---|
 | Skript meldet Exit 2 / «removed», nichts gedruckt | Power-/Error-LED; USB-Kabel; Drucker aus/ein; Auftrag ist bereits entfernt → Nachdruck aus der Kasse. |
 | Win32-Fehler 1801 (OpenPrinter) | Warteschlangenname falsch: `Get-Printer` zeigt die Namen; Druckername in den Einstellungen prüfen. |
+| `Add-Printer`: «Der angegebene Treiber ist nicht vorhanden» | Frisches Windows, «Generic / Text Only» noch nicht eingetragen: zuerst `Add-PrinterDriver -Name "Generic / Text Only"`, dann `Add-Printer` wiederholen (Abschnitt 2; `setup-laptop.ps1` macht das selbst). |
+| `Add-Printer`: «Der angegebene Drucker ist bereits vorhanden», oder `Get-PrinterPort` zeigt keinen USB*-Port | Der Epson-Treiber ist installiert und hat seine eigene Warteschlange («EPSON TM-T20 Receipt» o. ä., Port ESDPRT001) angelegt. Keine zweite Warteschlange anlegen: in der Kasse Einstellungen öffnen (Ampel «Drucker prüfen» antippen), den vorhandenen Drucker aus der Liste wählen, Testdruck. |
 | Warteschlange Angehalten/Offline | `Resume-Printer -Name TM-T20II`; «Drucker offline verwenden» abwählen; USB neu stecken. |
 | Aufträge bleiben «Wird gedruckt» | `Get-PrintJob -PrinterName TM-T20II \| Remove-PrintJob`, dann `Restart-Service Spooler` (Admin). |
 | Nach Standby nichts mehr | Abschnitt 5 anwenden; Drucker aus/ein, USB neu stecken. |

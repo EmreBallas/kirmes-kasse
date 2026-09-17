@@ -10,7 +10,7 @@
 import { mkdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { serve } from '@hono/node-server'
-import { erstelleTransport, startDruckWorker } from '@print/index'
+import { erstelleTransport, listeDrucker, startDruckWorker } from '@print/index'
 import { erstelleKassenApp } from './app'
 import { migriere, oeffneDb } from './db'
 import { erstelleDruckQuelle } from './druck'
@@ -50,7 +50,9 @@ const { app, repos } = erstelleKassenApp({
   druckStatus: () => worker.status(),
   nachDruckauftrag: () => {
     void worker.verarbeiteOffene()
-  }
+  },
+  listeDrucker: () => listeDrucker(),
+  setzeDruckerName: (name) => worker.setzeDruckerName(name)
 })
 
 const einstellungen = repos.einstellung.einstellungen()

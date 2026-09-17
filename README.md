@@ -94,20 +94,25 @@ Weitere Befehle:
 
 ## Drucker einrichten
 
-Es wird **keine Herstellersoftware** benötigt und sollte auch keine installiert werden: die Kasse schreibt ESC/POS-Bytes als RAW-Auftrag über den Windows-Spooler. Nötig ist nur eine Windows-Druckerwarteschlange mit dem mitgelieferten Treiber «Generic / Text Only» auf dem USB-Port des Druckers.
+Es wird **keine Herstellersoftware** benötigt: die Kasse schreibt rohe ESC/POS-Bytes als RAW-Auftrag über den Windows-Spooler. Nötig ist nur eine Windows-Druckerwarteschlange, die zum Drucker führt. Der Druckweg funktioniert über die Warteschlange **unabhängig davon, ob dahinter der mitgelieferte Treiber «Generic / Text Only» oder der Epson-Treiber (APD) steht** – bei RAW verändert der Treiber die Bytes nicht.
 
-PowerShell als Administrator:
+**Ohne Epson-Treiber** (empfohlen, weil nichts installiert werden muss), PowerShell als Administrator:
 
 ```powershell
+Add-PrinterDriver -Name "Generic / Text Only"
 Get-PrinterPort | Where-Object Name -like 'USB*'
 Add-Printer -Name "TM-T20II" -DriverName "Generic / Text Only" -PortName "USB001"
 Get-Printer -Name "TM-T20II" | Format-List Name, DriverName, PortName, PrinterStatus
 ```
 
-- Der **Name der Warteschlange muss mit der Einstellung «Druckername» in der Kasse übereinstimmen** (Standard: `TM-T20II`). Stimmt er nicht, zeigt die Ampel in der Kopfzeile «Drucker prüfen».
+- `Add-PrinterDriver` kommt zuerst: Der Treiber «Generic / Text Only» ist bei Windows dabei, ist auf einem frischen Windows aber noch nicht eingetragen. Ohne diesen Befehl scheitert `Add-Printer` mit «Der angegebene Treiber ist nicht vorhanden». Ist der Treiber schon eingetragen, tut der Befehl nichts Schädliches.
 - Hat Windows den Drucker an einen anderen Port gehängt, den ermittelten Port statt `USB001` eintragen (`Set-Printer -Name "TM-T20II" -PortName "USB002"`).
+
+**Falls der Epson-Treiber schon installiert ist:** Dann hat der Treiber bereits eine Warteschlange angelegt, sie heisst zum Beispiel «EPSON TM-T20 Receipt» oder «EPSON TM-T20II Receipt» und hängt an einem Epson-Port (`ESDPRT001`); einen Port `USB001` gibt es dann nicht. Es braucht **keine zweite Warteschlange**. In der Kasse unter Einstellungen den Drucker aus der Liste der installierten Drucker auswählen – die Kasse schlägt ihn selbst vor, wenn nur einer passt – und den Knopf «Testdruck» drücken.
+
+- Die Einstellung «Druckername» in der Kasse muss dem Namen einer vorhandenen Warteschlange entsprechen (Standard: `TM-T20II`). Die Einstellungen zeigen dafür die installierten Drucker zur Auswahl an. Fehlt die eingestellte Warteschlange, zeigt die Ampel in der Kopfzeile «Drucker prüfen» und führt beim Antippen direkt in die Einstellungen.
 - Der Testdruck läuft über die Einstellungen der Kasse (Knopf «Testdruck»). Auf dem Papier müssen Umlaute und türkische Zeichen korrekt erscheinen; die verwendete Codepage PC857 deckt deutsche und türkische Zeichen ab.
-- `kasse/tools/setup-laptop.ps1` erledigt die Einrichtung eines Kassengeräts in einem Lauf: Warteschlange anlegen (falls sie fehlt), Energieoptionen setzen (Bildschirm, Standby und Ruhezustand aus, selektives USB-Energiesparen deaktiviert), Autostart-Verknüpfung auf `C:\Kasse\Kasse.exe` und Windows-Update pausieren. Das Skript braucht Administratorrechte:
+- `kasse/tools/setup-laptop.ps1` erledigt die Einrichtung eines Kassengeräts in einem Lauf: Treiber «Generic / Text Only» eintragen und Warteschlange anlegen (falls sie fehlt; ist der Epson-Treiber installiert, wird stattdessen dessen Warteschlange genannt), Energieoptionen setzen (Bildschirm, Standby und Ruhezustand aus, selektives USB-Energiesparen deaktiviert), Autostart-Verknüpfung auf `C:\Kasse\Kasse.exe` und Windows-Update pausieren. Am Ende listet es alle vorhandenen Warteschlangen mit Port und Treiber auf. Das Skript braucht Administratorrechte:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File kasse\tools\setup-laptop.ps1

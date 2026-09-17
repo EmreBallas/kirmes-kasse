@@ -1,9 +1,14 @@
 /**
  * Kopfzeile des Verkaufsbildschirms: Kassentag, Kassier, Drucker-Ampel, Uhrzeit, Navigation.
+ *
+ * Die Ampel "Drucker pruefen" ist antippbar und springt direkt in die Einstellungen (PIN-Dialog wie
+ * gewohnt); als Untertitel und Tooltip zeigt sie die Meldung aus /api/status, z. B.
+ * "Warteschlange fehlt, Vorschlag: EPSON TM-T20 Receipt".
  */
 import type { JSX } from 'react'
 import type { Kassentag, StatusAntwort } from '@core/types'
 import { formatDatum } from '@core/bon'
+import { ampelMeldung, type DruckStatusMitVorschlag } from '../drucker'
 import { useJetzt } from '../hooks'
 import { uhrzeitAnzeige } from '../zeit'
 
@@ -28,20 +33,47 @@ function SchlossSymbol(): JSX.Element {
   )
 }
 
-export function Ampel({ status, verbunden }: { status: StatusAntwort | null; verbunden: boolean }): JSX.Element {
+interface AmpelProps {
+  status: StatusAntwort | null
+  verbunden: boolean
+  /** Antippen der roten Ampel: direkt in die Einstellungen (Druckerauswahl); fehlt der Callback, ist sie nur Anzeige */
+  onEinstellungen?: () => void
+}
+
+export function Ampel({ status, verbunden, onEinstellungen }: AmpelProps): JSX.Element {
   if (!verbunden || status === null) {
     return <span className="ampel ampel-rot">Server?</span>
   }
-  const druck = status.druck
+  const druck: DruckStatusMitVorschlag = status.druck
   const ok = druck.ampel === 'ok'
-  const titel = ok
-    ? `${druck.druckerName} (${druck.transport})`
-    : `${druck.letzterFehler ?? 'Druck fehlgeschlagen'} (${druck.druckerName})`
+  const meldung = ampelMeldung(druck)
+  const sim = druck.transport === 'simulator' ? <span className="ampel-zusatz"> SIM</span> : null
+
+  if (ok || onEinstellungen === undefined) {
+    return (
+      <span className={`ampel ${ok ? 'ampel-gruen' : 'ampel-rot'}`} title={meldung}>
+        {ok ? 'Druck OK' : 'Druck prüfen'}
+        {sim}
+      </span>
+    )
+  }
   return (
-    <span className={`ampel ${ok ? 'ampel-gruen' : 'ampel-rot'}`} title={titel}>
-      {ok ? 'Druck OK' : 'Druck prüfen'}
-      {druck.transport === 'simulator' ? <span className="ampel-zusatz"> SIM</span> : null}
-    </span>
+    <button
+      type="button"
+      className="ampel ampel-rot ampel-knopf"
+      title={`${meldung} – antippen für die Druckereinstellungen (PIN)`}
+      onClick={onEinstellungen}
+      aria-label={`Drucker prüfen: ${meldung}. Antippen öffnet die Einstellungen`}
+    >
+      <span className="ampel-text">
+        Druck prüfen{sim}
+        <span className="ampel-pfeil" aria-hidden="true">
+          {' '}
+          ›
+        </span>
+      </span>
+      <span className="ampel-meldung">{meldung}</span>
+    </button>
   )
 }
 
@@ -57,7 +89,7 @@ export function Kopfzeile(p: Props): JSX.Element {
         ) : null}
         <span className="kopf-datum">{p.kassentag !== null ? formatDatum(p.kassentag.datum) : '–'}</span>
         <span className="kopf-kassier">{p.kassentag !== null ? p.kassentag.kassier : ''}</span>
-        <Ampel status={p.status} verbunden={p.verbunden} />
+        <Ampel status={p.status} verbunden={p.verbunden} onEinstellungen={p.onEinstellungen} />
       </div>
       <div className="kopf-rechts">
         <span className="kopf-uhr zahl">{uhrzeitAnzeige(jetzt)}</span>

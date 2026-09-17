@@ -36,7 +36,30 @@ describe('Health und Status', () => {
       letzterFehler: null,
       transport: 'simulator',
       offeneAuftraege: 0,
-      druckerName: 'TM-T20II'
+      druckerName: 'TM-T20II',
+      vorschlag: null,
+      meldung: null
+    })
+  })
+
+  it('GET /api/status reicht Vorschlag und Meldung des Druck-Workers durch', async () => {
+    u = erstelleTestUmgebung({
+      deps: {
+        druckStatus: () => ({
+          ampel: 'pruefen',
+          letzterFehler: 'Warteschlange "TM-T20II" fehlt',
+          transport: 'winspool',
+          vorschlag: 'EPSON TM-T20 Receipt',
+          meldung:
+            'Warteschlange "TM-T20II" fehlt. Gefunden: "EPSON TM-T20 Receipt" – in den Einstellungen auswählen.'
+        })
+      }
+    })
+    const s = await u.anfrage('GET', '/api/status')
+    expect(s.json['druck']).toMatchObject({
+      ampel: 'pruefen',
+      vorschlag: 'EPSON TM-T20 Receipt',
+      meldung: expect.stringContaining('EPSON TM-T20 Receipt') as unknown
     })
   })
 
@@ -959,6 +982,28 @@ describe('PIN, Produkte, Einstellungen', () => {
     expect(praefix.status).toBe(400)
   })
 
+  it('PUT /api/einstellungen mit neuem druckerName meldet dem Druck-Worker den Namen', async () => {
+    const gesetzt: string[] = []
+    u = erstelleTestUmgebung({ deps: { setzeDruckerName: (n) => void gesetzt.push(n) } })
+    const gleich = await u.anfrage(
+      'PUT',
+      '/api/einstellungen',
+      { druckerName: 'TM-T20II' },
+      TEST_PIN
+    )
+    expect(gleich.status).toBe(200)
+    expect(gesetzt).toEqual([])
+    const neu = await u.anfrage(
+      'PUT',
+      '/api/einstellungen',
+      { druckerName: ' EPSON TM-T20 Receipt ' },
+      TEST_PIN
+    )
+    expect(neu.status).toBe(200)
+    expect(neu.json['druckerName']).toBe('EPSON TM-T20 Receipt')
+    expect(gesetzt).toEqual(['EPSON TM-T20 Receipt'])
+  })
+
   it('Testdaten löschen: Backup zuerst, Bewegungsdaten weg, Produkte und Einstellungen bleiben', async () => {
     u = erstelleTestUmgebung()
     await u.kassentagStarten()
@@ -1287,5 +1332,110 @@ describe('Einstellungen rabattProzent und veranstaltung', () => {
     await u.anfrage('PUT', '/api/einstellungen', { veranstaltung: 'Dorffest' }, TEST_PIN)
     const mit = await u.anfrage('GET', '/api/kassentag/aktuell/bericht')
     expect(mit.json['veranstaltung']).toBe('Dorffest')
+  })
+})
+
+describe('Drucker: installierte Warteschlangen und Übernahme', () => {
+  const EPSON = {
+    name: 'EPSON TM-T20 Receipt',
+    port: 'ESDPRT001',
+    treiber: 'EPSON TM-T20 Receipt',
+    status: 'Normal'
+  }
+  const PDF = {
+    name: 'Microsoft Print to PDF',
+    port: 'PORTPROMPT:',
+    treiber: 'Microsoft Print To PDF',
+    status: 'Normal'
+  }
+
+  it('GET /api/drucker: Liste, eingestellter Name und Vorschlag (Kassen-Laptop mit Epson-Treiber)', async () => {
+    u = erstelleTestUmgebung({ deps: { listeDrucker: async () => [EPSON, PDF] } })
+    const a = await u.anfrage('GET', '/api/drucker')
+    expect(a.status).toBe(200)
+    expect(a.json).toEqual({
+      drucker: [EPSON, PDF],
+      eingestellt: 'TM-T20II',
+      vorschlag: 'EPSON TM-T20 Receipt'
+    })
+  })
+
+  it('GET /api/drucker: eingestellter Name vorhanden -> kein Vorschlag; kein Kandidat -> kein Vorschlag', async () => {
+    u = erstelleTestUmgebung({
+      deps: { listeDrucker: async () => [{ ...EPSON, name: 'TM-T20II' }, PDF] }
+    })
+    const da = await u.anfrage('GET', '/api/drucker')
+    expect(da.json['vorschlag']).toBeNull()
+    expect(da.json['eingestellt']).toBe('TM-T20II')
+
+    await u.anfrage('PUT', '/api/einstellungen', { druckerName: 'Bondrucker' }, TEST_PIN)
+    u.aufraeumen()
+    u = erstelleTestUmgebung({ deps: { listeDrucker: async () => [PDF] } })
+    const keiner = await u.anfrage('GET', '/api/drucker')
+    expect(keiner.json).toEqual({ drucker: [PDF], eingestellt: 'TM-T20II', vorschlag: null })
+  })
+
+  it('GET /api/drucker: ohne listeDrucker-Dep oder bei Fehler leere Liste', async () => {
+    u = erstelleTestUmgebung()
+    expect((await u.anfrage('GET', '/api/drucker')).json).toEqual({
+      drucker: [],
+      eingestellt: 'TM-T20II',
+      vorschlag: null
+    })
+    u.aufraeumen()
+    u = erstelleTestUmgebung({
+      deps: {
+        listeDrucker: async () => {
+          throw new Error('PowerShell fehlt')
+        }
+      }
+    })
+    const a = await u.anfrage('GET', '/api/drucker')
+    expect(a.status).toBe(200)
+    expect(a.json['drucker']).toEqual([])
+  })
+
+  it('POST /api/drucker/uebernehmen: PIN-Pflicht, leerer Name 400, sonst Einstellung + Worker', async () => {
+    const gesetzt: string[] = []
+    u = erstelleTestUmgebung({
+      deps: {
+        listeDrucker: async () => [EPSON, PDF],
+        setzeDruckerName: async (n) => {
+          gesetzt.push(n)
+        }
+      }
+    })
+    const ohnePin = await u.anfrage('POST', '/api/drucker/uebernehmen', { name: EPSON.name })
+    expect(ohnePin.status).toBe(403)
+    expect(ohnePin.json['fehler']).toBe('pin_falsch')
+
+    const leer = await u.anfrage('POST', '/api/drucker/uebernehmen', { name: '   ' }, TEST_PIN)
+    expect(leer.status).toBe(400)
+    expect(leer.json['fehler']).toBe('ungueltige_eingabe')
+    const fehlt = await u.anfrage('POST', '/api/drucker/uebernehmen', {}, TEST_PIN)
+    expect(fehlt.status).toBe(400)
+    expect(gesetzt).toEqual([])
+    expect(u.repos.einstellung.einstellungen().druckerName).toBe('TM-T20II')
+
+    const ok = await u.anfrage(
+      'POST',
+      '/api/drucker/uebernehmen',
+      { name: ` ${EPSON.name} ` },
+      TEST_PIN
+    )
+    expect(ok.status).toBe(200)
+    expect(ok.json['druckerName']).toBe(EPSON.name)
+    expect(Object.keys(ok.json).some((k) => k.toLowerCase().includes('pin'))).toBe(false)
+    expect(u.repos.einstellung.einstellungen().druckerName).toBe(EPSON.name)
+    expect(gesetzt).toEqual([EPSON.name])
+
+    // Danach ist der eingestellte Name vorhanden -> kein Vorschlag mehr
+    const d = await u.anfrage('GET', '/api/drucker')
+    expect(d.json['eingestellt']).toBe(EPSON.name)
+    expect(d.json['vorschlag']).toBeNull()
+
+    // Nochmals derselbe Name: kein zweiter Aufruf des Workers
+    await u.anfrage('POST', '/api/drucker/uebernehmen', { name: EPSON.name }, TEST_PIN)
+    expect(gesetzt).toEqual([EPSON.name])
   })
 })

@@ -28,6 +28,7 @@ import type {
   Zahlung
 } from '@core/types'
 import type { WarenkorbEntwurf } from './rabatt'
+import type { DruckerAntwort } from './drucker'
 
 /** Port des Vite-Dev-Servers (npm run dev); nur dort liegt der Kassen-Server auf einer anderen Adresse. */
 export const VITE_DEV_PORT = '5173'
@@ -259,6 +260,8 @@ export function erstelleApi(
       anfrage<Druckauftrag>('GET', `/api/druck/${encodeURIComponent(id)}`, undefined, undefined, zeitlimits.status),
     testdruck: () => anfrage<{ druckauftragId: string }>('POST', '/api/druck/test', {}),
     archivOeffnen: () => anfrage<{ ok: boolean }>('POST', '/api/archiv/oeffnen', {}),
+    drucker: () => anfrage<DruckerAntwort>('GET', '/api/drucker'),
+    druckerUebernehmen: (name, pin) => anfrage<Einstellungen>('POST', '/api/drucker/uebernehmen', { name }, pin),
 
     einstellungen: () => anfrage<Einstellungen>('GET', '/api/einstellungen'),
     einstellungenSpeichern: (daten, pin) => anfrage<Einstellungen>('PUT', '/api/einstellungen', daten, pin),
@@ -308,6 +311,13 @@ export interface KasseApi {
   testdruck(): Promise<{ druckauftragId: string }>
   /** Archivordner (Abschluss-PDFs) im Explorer oeffnen; ausserhalb der Kassen-App 501 nicht_verfuegbar */
   archivOeffnen(): Promise<{ ok: boolean }>
+  /**
+   * Installierte Windows-Warteschlangen, der eingestellte Name und der Vorschlag des Servers
+   * (Bondrucker mit anderem Namen, z. B. "EPSON TM-T20 Receipt"). Ohne PowerShell ist die Liste leer.
+   */
+  drucker(): Promise<DruckerAntwort>
+  /** Vorgeschlagene bzw. gewaehlte Warteschlange als drucker_name uebernehmen (PIN); liefert die neuen Einstellungen */
+  druckerUebernehmen(name: string, pin: string): Promise<Einstellungen>
   einstellungen(): Promise<Einstellungen>
   einstellungenSpeichern(daten: EinstellungenAenderung, pin: string): Promise<Einstellungen>
   pinPruefen(pin: string): Promise<{ ok: boolean }>

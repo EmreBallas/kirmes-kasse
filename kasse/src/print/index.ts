@@ -14,7 +14,15 @@ export {
   parseSkriptJson,
   baueSkriptArgumente,
   verwerfeSpoolerAuftraege,
-  druckerVorhanden
+  druckerVorhanden,
+  listeDrucker,
+  parseDruckerListe,
+  baueListeBefehl,
+  schlageDruckerVor,
+  istBondruckerKandidat,
+  sollAutomatischUebernehmen,
+  EPSON_MUSTER,
+  BON_PORT_PRAEFIXE
 } from './winspool'
 export type {
   WinspoolOptionen,
@@ -28,6 +36,7 @@ export {
   startDruckWorker,
   bezeichnungFuer,
   fehlerWarteschlangeFehlt,
+  meldungWarteschlangeFehlt,
   GRUND_APP_NEUSTART,
   PRUEF_INTERVALL_MS
 } from './worker'
