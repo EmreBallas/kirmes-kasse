@@ -1,5 +1,7 @@
 # Roadmap Etappe 1 – Kasse Kirmes 2026 (Fassung 2)
 
+> **Nachtrag 17.9.2026:** Die Helfer-Regel dieser Roadmap («Helfer/Gratis, 0 CHF») ist überholt. Helfer zahlen ihr Essen, sofort oder später, mit offenem Saldo je Name. Massgebend ist `docs/entscheidungen.md` Nr. 55. Ebenfalls nach dieser Fassung dazugekommen: separate Spenden (Nr. 51), Rabatt auf den ganzen Beleg (Nr. 53), Druckerwahl (Nr. 54).
+
 Stand: Samstag, 12. September 2026, nach Kritik. Verbindliche Grundlage: `docs/entscheidungen.md`. Druckeranleitung: `docs/drucker-setup.md`. Produkt-Seed: `docs/produkte-seed.json`.
 
 Änderungen gegenüber Fassung 1 (Kurzliste): Soll-Formeln des Abschlusses auf Brutto umgestellt (Storni nur als Gegenbuchung); Gruppenwerte `coupon` / `kasse` überall; kein Storno-Bon in Etappe 1; «Total in EUR» im EUR-Bezahlfluss; Tastatureingabe ins MUSS; Sonntag mit gepacktem Hello-World-Build und echtem Druck; Abschluss-Bildschirm und -Bon auf Dienstag; Kassen-Laptop bis Dienstag; Kurz-Regression am Donnerstag; Idempotenz per Client-UUID; `Remove-PrintJob` sofort bei hängendem Auftrag; Ampel nur «Druck OK / Druck prüfen»; Simulator nur im Dev-Modus; «Testdaten löschen» als Werkzeug; WebSocket gestrichen; Brack-Plan-B für Sonntag korrigiert; Kürzungsregel bei Rückstand.

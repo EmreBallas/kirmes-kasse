@@ -2,16 +2,21 @@
  * Verkaufsbildschirm: Kopfzeile, Produktraster links, Warenkorb rechts, Banner nach dem Bezahlen,
  * Bezahldialog als Overlay. Dazu die freie Spende ohne Kauf (Knopf "Spende" im Warenkorb-Panel,
  * Spendedialog als Overlay, danach eigener Banner "Spende CHF 5.00 (Twint) erfasst"; Warenkorb bleibt).
+ *
+ * Zahlart «Helfer» oeffnet den Helferdialog (Name, dann «Gleich zahlen» oder «Spaeter zahlen»).
+ * «Gleich zahlen» fuehrt in den bestehenden Bezahldialog mit dem Helfernamen im Kopf; «Spaeter zahlen»
+ * speichert den Verkauf mit zahlart helfer (offene Schuld) und zeigt das Banner mit Sofort-ausgeben-Hinweis.
  */
 import { useCallback, useEffect, useState, type JSX } from 'react'
-import type { Einstellungen, Kassentag, Produkt, Spende, StatusAntwort, VerkaufAntwort, Warenkorb, Zahlart } from '@core/types'
+import type { Einstellungen, Kassentag, Produkt, Spende, StatusAntwort, VerkaufAntwort, Warenkorb } from '@core/types'
 import { entfernen, hinzufuegen, leererWarenkorb, mengeAendern } from '@core/warenkorb'
 import { api, fehlerMeldung } from '../api'
-import type { BannerZustand } from '../bezahlen'
+import type { BannerZustand, BarOderTwint } from '../bezahlen'
 import { rabattSatz, wirksamerSatz } from '../rabatt'
 import { spendeBannerText } from '../spende'
 import { Banner } from './Banner'
 import { Bezahldialog } from './Bezahldialog'
+import { Helferdialog } from './Helferdialog'
 import { Kopfzeile } from './Kopfzeile'
 import { Produktraster } from './Produktraster'
 import { Spendedialog } from './Spendedialog'
@@ -34,15 +39,23 @@ interface Props {
   /** Kasse beenden (PIN); nur im Electron-Fenster vorhanden */
   onBeenden?: () => void
   onLetzte: () => void
+  onHelfer: () => void
   onAbschluss: () => void
   onVerwaltung: () => void
   onEinstellungen: () => void
 }
 
+/** Offener Bezahldialog: Zahlart mit Geld, bei Helfer «gleich zahlen» mit Namen. */
+interface Bezahlen {
+  zahlart: BarOderTwint
+  helferName: string | null
+}
+
 export function Verkauf(p: Props): JSX.Element {
   const [produkte, setProdukte] = useState<Produkt[]>([])
   const [ladeFehler, setLadeFehler] = useState<string | null>(null)
-  const [zahlart, setZahlart] = useState<Zahlart | null>(null)
+  const [bezahlen, setBezahlen] = useState<Bezahlen | null>(null)
+  const [helferDialog, setHelferDialog] = useState(false)
   const [meldung, setMeldung] = useState<string | null>(null)
   /** true, solange das Banner ein Druckproblem zeigt: dann schliesst es nur ueber den Knopf */
   const [bannerFest, setBannerFest] = useState(false)
@@ -87,6 +100,19 @@ export function Verkauf(p: Props): JSX.Element {
   const kurs = p.einstellungen?.eurKursX10000 ?? 0
   const eurMoeglich = kurs > 0
   const satz = rabattSatz(p.einstellungen)
+  const rabattProzent = wirksamerSatz(p.rabattAktiv, satz)
+
+  /** Nach jedem gespeicherten Verkauf (Bezahldialog oder Helfer «spaeter zahlen»). */
+  const verkaufGespeichert = (antwort: VerkaufAntwort): void => {
+    setBezahlen(null)
+    setHelferDialog(false)
+    p.onWarenkorb(leererWarenkorb())
+    // Rabatt gilt immer nur fuer einen Beleg: naechster Kunde faengt ohne Rabatt an.
+    p.onRabatt(false)
+    setBannerFest(false)
+    p.onBanner(antwort)
+    void ladeProdukte()
+  }
 
   return (
     <div className="seite seite-verkauf">
@@ -96,6 +122,7 @@ export function Verkauf(p: Props): JSX.Element {
         verbunden={p.verbunden}
         onBeenden={p.onBeenden}
         onLetzte={p.onLetzte}
+        onHelfer={p.onHelfer}
         onAbschluss={p.onAbschluss}
         onVerwaltung={p.onVerwaltung}
         onEinstellungen={p.onEinstellungen}
@@ -163,7 +190,8 @@ export function Verkauf(p: Props): JSX.Element {
             if (p.warenkorb.zeilen.length === 0) return
             if (!bannerFest) p.onBanner(null)
             setSpendeBanner(null)
-            setZahlart(za)
+            if (za === 'helfer') setHelferDialog(true)
+            else setBezahlen({ zahlart: za, helferName: null })
           }}
           spendeMoeglich={p.kassentag !== null}
           onSpende={() => {
@@ -183,22 +211,27 @@ export function Verkauf(p: Props): JSX.Element {
           }}
         />
       ) : null}
-      {zahlart !== null ? (
+      {helferDialog ? (
+        <Helferdialog
+          warenkorb={p.warenkorb}
+          rabattProzent={rabattProzent}
+          eurMoeglich={eurMoeglich}
+          verdeckt={bezahlen !== null}
+          onAbbrechen={() => setHelferDialog(false)}
+          onSpaeterGespeichert={verkaufGespeichert}
+          onGleichZahlen={(name, za) => setBezahlen({ zahlart: za, helferName: name })}
+        />
+      ) : null}
+      {bezahlen !== null ? (
         <Bezahldialog
-          zahlart={zahlart}
+          zahlart={bezahlen.zahlart}
+          helferName={bezahlen.helferName}
           warenkorb={p.warenkorb}
           kursX10000={kurs > 0 ? kurs : 1}
-          rabattProzent={wirksamerSatz(p.rabattAktiv, satz, zahlart)}
-          onAbbrechen={() => setZahlart(null)}
-          onErfolg={(antwort) => {
-            setZahlart(null)
-            p.onWarenkorb(leererWarenkorb())
-            // Rabatt gilt immer nur fuer einen Beleg: naechster Kunde faengt ohne Rabatt an.
-            p.onRabatt(false)
-            setBannerFest(false)
-            p.onBanner(antwort)
-            void ladeProdukte()
-          }}
+          rabattProzent={rabattProzent}
+          // Zurueck aus «gleich zahlen» fuehrt in den Helferdialog (bleibt offen), sonst in den Warenkorb
+          onAbbrechen={() => setBezahlen(null)}
+          onErfolg={verkaufGespeichert}
         />
       ) : null}
     </div>

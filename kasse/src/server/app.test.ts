@@ -272,16 +272,32 @@ describe('POST /api/verkauf', () => {
     })
   })
 
-  it('Helfer: Total 0, Positionen behalten den Preis-Snapshot', async () => {
+  it('Helfer «später zahlen»: volles Total als offene Schuld, gegeben 0, Name Pflicht, Positionen behalten den Preis-Snapshot', async () => {
     u = erstelleTestUmgebung()
     await u.kassentagStarten()
-    const a = await u.verkauf('v1', [{ name: 'Winti Burger', anzahl: 2 }], { zahlart: 'helfer' })
+    const ohneName = await u.verkauf('v0', [{ name: 'Winti Burger', anzahl: 2 }], {
+      zahlart: 'helfer'
+    })
+    expect(ohneName.status).toBe(400)
+    expect(ohneName.json['fehler']).toBe('helfer_name_fehlt')
+    expect(u.repos.verkauf.finde('v0')).toBeNull()
+
+    const a = await u.verkauf('v1', [{ name: 'Winti Burger', anzahl: 2 }], {
+      zahlart: 'helfer',
+      helferName: ' Ali '
+    })
     expect(a.status).toBe(201)
-    expect(verkaufVon(a)['totalRappen']).toBe(0)
+    expect(verkaufVon(a)).toMatchObject({ totalRappen: 2200, helferName: 'Ali', zahlart: 'helfer' })
+    expect(a.json['helferName']).toBe('Ali')
+    expect(a.json['offenRappen']).toBe(2200)
     expect(zahlungVon(a)['gegeben']).toBe(0)
     expect((a.json['positionen'] as Record<string, unknown>[])[0]?.['preisSnapshotRappen']).toBe(
       1100
     )
+    // gewöhnlicher Verkauf: kein Name, kein offener Betrag
+    const b = await u.verkauf('v2', [{ name: 'Kaffee', anzahl: 1 }])
+    expect(b.json['helferName']).toBeNull()
+    expect(b.json['offenRappen']).toBeNull()
   })
 
   it('ausverkaufte oder inaktive Produkte -> 409 produkt_nicht_verfuegbar', async () => {
@@ -381,16 +397,21 @@ describe('Storno und Nachdruck', () => {
     expect(fehlt.status).toBe(404)
   })
 
-  it('Helfer-Storno: Auszahlung 0, keine Schublade', async () => {
+  it('Helfer-Storno («später zahlen»): Auszahlung 0, keine Schublade, Schuld sinkt', async () => {
     u = erstelleTestUmgebung()
     await u.kassentagStarten()
-    await u.verkauf('v1', [{ name: 'Winti Burger', anzahl: 1 }], { zahlart: 'helfer' })
+    await u.verkauf('v1', [{ name: 'Winti Burger', anzahl: 1 }], {
+      zahlart: 'helfer',
+      helferName: 'Ali'
+    })
+    expect(u.repos.helfer.saldo('Ali').offenRappen).toBe(1100)
     const anzahlVorher = u.repos.druckauftrag.anzahlOffen()
     const s = await u.anfrage('POST', '/api/verkauf/v1/storno', { grund: 'tippfehler' })
     expect(s.status).toBe(200)
     expect(s.json['auszahlungChfRappen']).toBe(0)
     expect(s.json['druckauftragId']).toBeNull()
     expect(u.repos.druckauftrag.anzahlOffen()).toBe(anzahlVorher)
+    expect(u.repos.helfer.saldo('Ali').offenRappen).toBe(0)
   })
 
   it('Storno wird dem Kassentag des Stornos zugeordnet', async () => {
@@ -482,7 +503,10 @@ describe('Kassentag', () => {
 
     await u.verkauf('v1', [{ name: 'Winti Burger', anzahl: 1 }], { gegeben: 2000 })
     await u.verkauf('v2', [{ name: 'Kaffee', anzahl: 2 }], { zahlart: 'twint', gegeben: 500 })
-    await u.verkauf('v3', [{ name: 'Lahmacun', anzahl: 1 }], { zahlart: 'helfer' })
+    await u.verkauf('v3', [{ name: 'Lahmacun', anzahl: 1 }], {
+      zahlart: 'helfer',
+      helferName: 'Ali'
+    })
 
     const vorschau = await u.anfrage('GET', '/api/kassentag/aktuell/bericht')
     expect(vorschau.status).toBe(200)
@@ -491,7 +515,11 @@ describe('Kassentag', () => {
       barEinnahmenChfRappen: 1100,
       twintUmsatzRappen: 500,
       helferessenStueck: 1,
-      helferessenEntgangenRappen: 500,
+      helferessenBetragRappen: 500,
+      helferSpaeterRappen: 500,
+      helferSofortRappen: 0,
+      helferOffenGesamtRappen: 500,
+      helferOffen: [{ name: 'Ali', offenRappen: 500, verkaeufeAnzahl: 1 }],
       sollChfRappen: 21100,
       istChfRappen: null,
       differenzChfRappen: null,
@@ -588,7 +616,9 @@ describe('Kassentag', () => {
     const einzeln = await u.anfrage('GET', `/api/kassentag/${id}`)
     expect(einzeln.json['pdfPfad']).toBe('C:/x/a.pdf')
     const aktuell = await u.anfrage('GET', '/api/kassentag/aktuell')
-    expect((aktuell.json['letzterAbgeschlossener'] as Record<string, unknown>)['pdfPfad']).toBe('C:/x/a.pdf')
+    expect((aktuell.json['letzterAbgeschlossener'] as Record<string, unknown>)['pdfPfad']).toBe(
+      'C:/x/a.pdf'
+    )
   })
 
   it('Abschluss: Callback mit Fehler laesst pdfPfad null, loggt und die Antwort bleibt 200', async () => {
@@ -631,7 +661,10 @@ describe('Kassentag', () => {
     u = erstelleTestUmgebung()
     const ohne = await u.anfrage('POST', '/api/archiv/oeffnen', {})
     expect(ohne.status).toBe(501)
-    expect(ohne.json).toEqual({ fehler: 'nicht_verfuegbar', meldung: 'Nur in der Kassen-App möglich.' })
+    expect(ohne.json).toEqual({
+      fehler: 'nicht_verfuegbar',
+      meldung: 'Nur in der Kassen-App möglich.'
+    })
     u.aufraeumen()
 
     u = erstelleTestUmgebung({
@@ -1241,16 +1274,32 @@ describe('Beleg-Rabatt', () => {
     })
   })
 
-  it('bei Zahlart helfer ist der Rabatt wirkungslos (Total 0, Rabatt 0)', async () => {
+  it('bei Zahlart helfer wirkt der Rabatt: 2 × 11.00 mit 50 % -> Schuld 11.00, Rabatt 11.00', async () => {
     u = erstelleTestUmgebung()
     await u.kassentagStarten()
     const a = await u.verkauf('v1', [{ name: 'Winti Burger', anzahl: 2 }], {
       zahlart: 'helfer',
       gegeben: 0,
-      rabattProzent: 50
+      rabattProzent: 50,
+      helferName: 'Ali'
     })
     expect(a.status).toBe(201)
-    expect(verkaufVon(a)).toMatchObject({ totalRappen: 0, rabattProzent: 0, rabattRappen: 0 })
+    expect(verkaufVon(a)).toMatchObject({
+      totalRappen: 1100,
+      rabattProzent: 50,
+      rabattRappen: 1100
+    })
+    expect(a.json['offenRappen']).toBe(1100)
+    expect(u.repos.helfer.saldo('Ali').offenRappen).toBe(1100)
+    const b = await u.anfrage('GET', '/api/kassentag/aktuell/bericht')
+    expect(b.json['rabatteAnzahl']).toBe(1)
+    expect(b.json['rabatteRappen']).toBe(1100)
+    expect(b.json['helferSpaeterRappen']).toBe(1100)
+    // Der Umsatz je Produkt bleibt brutto, das Stück zählt in der Spalte Helfer
+    const burger = (b.json['produkte'] as Record<string, unknown>[]).find(
+      (p) => p['name'] === 'Winti Burger'
+    )
+    expect(burger).toMatchObject({ verkauft: 0, helfer: 2, umsatzRappen: 2200 })
   })
 
   it('Abschluss: Rabattzeile, Soll unverändert, Storno nimmt den Rabatt heraus', async () => {

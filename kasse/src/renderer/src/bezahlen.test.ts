@@ -63,7 +63,7 @@ describe('pruefeVorSenden', () => {
 
 describe('baueVerkaufAnfrage', () => {
   it('uebernimmt Positionen und Flags', () => {
-    const a = baueVerkaufAnfrage('uuid-1', warenkorb, 'bar_chf', 5000, false, true, 0)
+    const a = baueVerkaufAnfrage('uuid-1', warenkorb, 'bar_chf', 5000, false, true, 0, null)
     expect(a).toEqual({
       id: 'uuid-1',
       positionen: [
@@ -74,12 +74,13 @@ describe('baueVerkaufAnfrage', () => {
       gegeben: 5000,
       spendeBehalten: false,
       bestaetigtHohesRueckgeld: true,
-      rabattProzent: 0
+      rabattProzent: 0,
+      helferName: null
     })
   })
 
   it('sendet den gewaehrten Rabattsatz mit; die Positionen bleiben zu vollen Mengen', () => {
-    const a = baueVerkaufAnfrage('uuid-2', warenkorb, 'twint', 1350, false, false, 50)
+    const a = baueVerkaufAnfrage('uuid-2', warenkorb, 'twint', 1350, false, false, 50, null)
     expect(a.rabattProzent).toBe(50)
     expect(a.positionen).toEqual([
       { produktId: 'p1', anzahl: 2 },
@@ -87,8 +88,17 @@ describe('baueVerkaufAnfrage', () => {
     ])
   })
 
-  it('bei Zahlart Helfer wird der Rabatt nie gesendet (dort wirkungslos)', () => {
-    expect(baueVerkaufAnfrage('uuid-3', warenkorb, 'helfer', 0, false, false, 50).rabattProzent).toBe(0)
+  it('Helfer «gleich zahlen»: echte Zahlart mit Helfername, der Rabatt bleibt wirksam', () => {
+    const a = baueVerkaufAnfrage('uuid-3', warenkorb, 'bar_chf', 2000, false, false, 50, 'Anna')
+    expect(a.zahlart).toBe('bar_chf')
+    expect(a.helferName).toBe('Anna')
+    expect(a.rabattProzent).toBe(50)
+  })
+
+  it('Rabatt gilt jetzt auch bei Zahlart Helfer (spaeter zahlen: Total = Schuld)', () => {
+    const a = baueVerkaufAnfrage('uuid-4', warenkorb, 'helfer', 0, false, false, 50, 'Anna')
+    expect(a.rabattProzent).toBe(50)
+    expect(a.helferName).toBe('Anna')
   })
 })
 
@@ -129,7 +139,7 @@ describe('druckVerlauf / bannerDruckProblem', () => {
 
 describe('Banner nach Storno', () => {
   const antwort: VerkaufAntwort = {
-    verkauf: { id: 'v4', kassentagId: 'k1', belegnr: 'K1-0004', zeit: '2026-09-19T14:32:00.000Z', zahlart: 'bar_chf', totalRappen: 250, rabattProzent: 0, rabattRappen: 0, storniertAm: null, stornoId: null },
+    verkauf: { id: 'v4', kassentagId: 'k1', belegnr: 'K1-0004', zeit: '2026-09-19T14:32:00.000Z', zahlart: 'bar_chf', totalRappen: 250, rabattProzent: 0, rabattRappen: 0, helferName: null, storniertAm: null, stornoId: null },
     zahlung: { verkaufId: 'v4', waehrung: 'CHF', kursX10000: null, gegeben: 500, gegebenChfRappen: 500, rueckgeldChfRappen: 250, spendeChfRappen: 0, spendeTyp: null },
     positionen: [],
     sofortAusgeben: [],

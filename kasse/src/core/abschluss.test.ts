@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { berechneAbschluss, type AbschlussInput } from './abschluss'
-import type { Kassentag, Position, Spende, SpendeTyp, Storno, Verkauf, Zahlart, Zahlung } from './types'
+import type { HelferSaldo, HelferZahlung, Kassentag, Position, Spende, SpendeTyp, Storno, Verkauf, Zahlart, Zahlung } from './types'
 import { eurZuChfRappen, rabattBetrag } from './geld'
 import { berechneZahlung } from './zahlung'
 
@@ -37,14 +37,16 @@ function verkauf(
   zahlart: Zahlart,
   artikel: Artikel[],
   gegeben: number,
-  opts: { kurs?: number; spendeBehalten?: boolean; zeit?: string; rabattProzent?: number } = {}
+  opts: { kurs?: number; spendeBehalten?: boolean; zeit?: string; rabattProzent?: number; helferName?: string } = {}
 ): { verkauf: Verkauf; positionen: Position[]; zahlung: Zahlung } {
   const zwischensumme = artikel.reduce((s, a) => s + a.preis * a.anzahl, 0)
-  // Wie der Server: Rabatt auf den ganzen Beleg, bei Helfer wirkungslos; Positionen behalten volle Preise.
-  const rabattProzent = zahlart === 'helfer' ? 0 : (opts.rabattProzent ?? 0)
+  // Wie der Server: Rabatt auf den ganzen Beleg (auch bei Helfer); Positionen behalten volle Preise.
+  const rabattProzent = opts.rabattProzent ?? 0
   const r = rabattBetrag(zwischensumme, rabattProzent)
-  // Helfer: der Server speichert Total 0 (Fachregel 8), sonst den rabattierten Betrag
-  const totalRappen = zahlart === 'helfer' ? 0 : r.total
+  // Helfer «später zahlen»: der Server speichert das volle (rabattierte) Total als Schuld
+  const totalRappen = r.total
+  // Helfer «später zahlen» braucht immer einen Namen; Tests ohne Namen bekommen einen Standard
+  const helferName = opts.helferName ?? (zahlart === 'helfer' ? 'Helfer Test' : null)
   const z = berechneZahlung({
     zahlart,
     totalRappen,
@@ -63,6 +65,7 @@ function verkauf(
       totalRappen,
       rabattProzent: r.rabatt === 0 ? 0 : rabattProzent,
       rabattRappen: r.rabatt,
+      helferName,
       storniertAm: null,
       stornoId: null
     },
@@ -124,6 +127,33 @@ function spende(
   }
 }
 
+/** Helfer-Zahlung wie der Server sie anlegt (CHF-Gegenwert bei EUR auf 5 Rappen abgerundet). */
+function helferZahlung(
+  id: string,
+  tag: Kassentag,
+  helferName: string,
+  typ: SpendeTyp,
+  betrag: number,
+  opts: { kurs?: number; storniert?: boolean } = {}
+): HelferZahlung {
+  const kurs = typ === 'bar_eur' ? (opts.kurs ?? 9000) : null
+  return {
+    id,
+    kassentagId: tag.id,
+    helferName,
+    zeit: `${tag.datum}T18:00:00`,
+    typ,
+    betrag,
+    kursX10000: kurs,
+    betragChfRappen: kurs === null ? betrag : eurZuChfRappen(betrag, kurs),
+    storniertAm: opts.storniert === true ? `${tag.datum}T18:01:00` : null
+  }
+}
+
+function saldo(name: string, offenRappen: number, verkaeufeAnzahl = 1): HelferSaldo {
+  return { name, offenRappen, verkaeufeAnzahl, letzteZeit: '2026-09-19T12:00:00' }
+}
+
 function input(tag: Kassentag, vs: ReturnType<typeof verkauf>[], storni: Storno[] = [], rest: Partial<AbschlussInput> = {}): AbschlussInput {
   return {
     kassentag: tag,
@@ -132,6 +162,8 @@ function input(tag: Kassentag, vs: ReturnType<typeof verkauf>[], storni: Storno[
     zahlungen: vs.map((v) => v.zahlung),
     storni,
     spenden: [],
+    helferZahlungen: [],
+    helferSalden: [],
     nachdrucke: 0,
     istChfRappen: null,
     istEurCent: null,
@@ -193,16 +225,19 @@ describe('berechneAbschluss – Kontrollfälle Roadmap Abschnitt 4', () => {
     expect(b.sollChfRappen).toBe(20000 - 1200)
   })
 
-  it('Helfer storniert -> Auszahlung 0, Soll unverändert', () => {
+  it('Helfer (später zahlen) storniert -> Auszahlung 0, Soll unverändert, Helferessen zählen nicht', () => {
     const v = verkauf('4', SAMSTAG, 'helfer', [BURGER], 0)
+    expect(v.verkauf.totalRappen).toBe(1100) // Schuld in voller Höhe gespeichert
     const st = storno(v.verkauf, SAMSTAG, 0)
     const b = berechneAbschluss(input(SAMSTAG, [v], [st]))
     expect(b.storniAnzahl).toBe(1)
     expect(b.storniAuszahlungRappen).toBe(0)
     expect(b.sollChfRappen).toBe(20000)
-    // Testfall 28: Helferessen-Stück sinken, konsistent zur Helfer-Spalte der Produktzeilen
+    // Testfall 28: Helferessen-Stück und -Betrag sinken, konsistent zur Helfer-Spalte der Produktzeilen
     expect(b.helferessenStueck).toBe(0)
-    expect(b.helferessenEntgangenRappen).toBe(0)
+    expect(b.helferessenBetragRappen).toBe(0)
+    expect(b.helferSpaeterRappen).toBe(0)
+    expect(b.helferSofortRappen).toBe(0)
     expect(b.produkte).toEqual([]) // Stückzahl je Produkt ohne stornierte
   })
 
@@ -352,7 +387,15 @@ describe('berechneAbschluss – gemischter Tag', () => {
     expect(b.storniAnzahl).toBe(1)
     expect(b.storniAuszahlungRappen).toBe(500)
     expect(b.helferessenStueck).toBe(2)
-    expect(b.helferessenEntgangenRappen).toBe(1100 + 250)
+    expect(b.helferessenBetragRappen).toBe(1100 + 250)
+    expect(b.helferSpaeterRappen).toBe(1100 + 250)
+    expect(b.helferSofortRappen).toBe(0)
+    expect(b.helferZahlungenBarChfRappen).toBe(0)
+    expect(b.helferZahlungenEurCent).toBe(0)
+    expect(b.helferZahlungenEurChfRappen).toBe(0)
+    expect(b.helferZahlungenTwintRappen).toBe(0)
+    expect(b.helferOffenGesamtRappen).toBe(0)
+    expect(b.helferOffen).toEqual([])
     expect(b.nachdrucke).toBe(2)
     expect(b.spendenSeparatAnzahl).toBe(0)
     expect(b.spendenSeparatChfRappen).toBe(0)
@@ -365,12 +408,12 @@ describe('berechneAbschluss – gemischter Tag', () => {
     expect(b.erstelltAm).toBe('2026-09-19T22:00:00')
   })
 
-  it('Stück je Produkt: verkauft/helfer getrennt, Umsatz nur zahlart != helfer, ohne stornierte', () => {
+  it('Stück je Produkt: verkauft/helfer getrennt, Umsatz beide zusammen zu vollen Preisen, ohne stornierte', () => {
     const b = berechneAbschluss(input(SAMSTAG, alle, [st8]))
     expect(b.produkte).toEqual([
       { produktId: 'doener', name: 'Döner Kebap', verkauft: 3, helfer: 0, umsatzRappen: 3600 },
-      { produktId: 'dose', name: 'Getränk Dose', verkauft: 4, helfer: 1, umsatzRappen: 1000 },
-      { produktId: 'burger', name: 'Winti Burger', verkauft: 4, helfer: 1, umsatzRappen: 4400 }
+      { produktId: 'dose', name: 'Getränk Dose', verkauft: 4, helfer: 1, umsatzRappen: 5 * 250 },
+      { produktId: 'burger', name: 'Winti Burger', verkauft: 4, helfer: 1, umsatzRappen: 5 * 1100 }
     ])
   })
 
@@ -425,16 +468,19 @@ describe('berechneAbschluss – Beleg-Rabatte', () => {
     expect(b.anzahlBelege).toBe(3)
   })
 
-  it('Helfer-Beleg: Rabatt wirkungslos, Total 0, keine Rabattzeile', () => {
+  it('Helfer-Beleg (später zahlen) mit Rabatt: Schuld rabattiert, Rabattzeile zählt, Soll unverändert', () => {
     const v = verkauf('r6', SAMSTAG, 'helfer', [MENUE], 0, { rabattProzent: 50 })
-    expect(v.verkauf.totalRappen).toBe(0)
-    expect(v.verkauf.rabattProzent).toBe(0)
-    expect(v.verkauf.rabattRappen).toBe(0)
+    expect(v.verkauf.totalRappen).toBe(1350)
+    expect(v.verkauf.rabattProzent).toBe(50)
+    expect(v.verkauf.rabattRappen).toBe(1350)
     const b = berechneAbschluss(input(SAMSTAG, [v]))
-    expect(b.rabatteAnzahl).toBe(0)
-    expect(b.rabatteRappen).toBe(0)
-    expect(b.helferessenEntgangenRappen).toBe(2700) // entgangener Umsatz zum vollen Preis
+    expect(b.rabatteAnzahl).toBe(1)
+    expect(b.rabatteRappen).toBe(1350)
+    expect(b.helferessenBetragRappen).toBe(1350) // die rabattierte Schuld
+    expect(b.helferSpaeterRappen).toBe(1350)
     expect(b.sollChfRappen).toBe(20000)
+    // Umsatz je Produkt bleibt brutto zu vollen Preisen, auch in der Helfer-Spalte
+    expect(b.produkte).toEqual([{ produktId: 'menue', name: 'Menü', verkauft: 0, helfer: 1, umsatzRappen: 2700 }])
   })
 
   it('Bar-EUR mit Rabatt: Rückgeld und Soll rechnen mit dem rabattierten Total', () => {
@@ -454,5 +500,154 @@ describe('berechneAbschluss – Beleg-Rabatte', () => {
     expect(leer.veranstaltung).toBeUndefined()
     const mit = berechneAbschluss(input(SAMSTAG, [], [], { veranstaltung: ' Dorffest Musterhausen ' }))
     expect(mit.veranstaltung).toBe('Dorffest Musterhausen')
+  })
+})
+
+describe('berechneAbschluss – Helfer zahlen ihr Essen (sofort oder später)', () => {
+  it('Helfer später zahlen 12.00 -> Helferessen 12.00 = später 12.00, Bar-Einnahmen und Soll unverändert', () => {
+    const v = verkauf('h1', SAMSTAG, 'helfer', [DOENER], 0, { helferName: 'Anna' })
+    expect(v.verkauf.totalRappen).toBe(1200)
+    expect(v.zahlung.gegeben).toBe(0)
+    const b = berechneAbschluss(input(SAMSTAG, [v]))
+    expect(b.helferessenStueck).toBe(1)
+    expect(b.helferessenBetragRappen).toBe(1200)
+    expect(b.helferSpaeterRappen).toBe(1200)
+    expect(b.helferSofortRappen).toBe(0)
+    expect(b.barEinnahmenChfRappen).toBe(0)
+    expect(b.twintUmsatzRappen).toBe(0)
+    expect(b.sollChfRappen).toBe(20000)
+    expect(b.sollEurCent).toBe(0)
+    expect(b.anzahlBelege).toBe(1)
+  })
+
+  it('Helfer gleich zahlen bar 12.00 -> in Bar-Einnahmen und Soll enthalten, Helferessen sofort 12.00', () => {
+    const v = verkauf('h2', SAMSTAG, 'bar_chf', [DOENER], 2000, { helferName: 'Anna' })
+    const b = berechneAbschluss(input(SAMSTAG, [v]))
+    expect(b.barEinnahmenChfRappen).toBe(1200)
+    expect(b.sollChfRappen).toBe(20000 + 1200)
+    expect(b.helferessenStueck).toBe(1)
+    expect(b.helferessenBetragRappen).toBe(1200)
+    expect(b.helferSofortRappen).toBe(1200)
+    expect(b.helferSpaeterRappen).toBe(0)
+  })
+
+  it('Helfer gleich zahlen per Twint und EUR: Helferessen sofort, Geldsummen wie normale Verkäufe', () => {
+    const twint = verkauf('h3', SAMSTAG, 'twint', [BURGER], 1100, { helferName: 'Beat' })
+    const eur = verkauf('h4', SAMSTAG, 'bar_eur', [DOENER], 2000, { helferName: 'Cem' }) // 18.00 CHF, Rückgeld 6.00
+    const b = berechneAbschluss(input(SAMSTAG, [twint, eur]))
+    expect(b.twintUmsatzRappen).toBe(1100)
+    expect(b.barEinnahmenEurCent).toBe(2000)
+    expect(b.rueckgeldAusEurRappen).toBe(600)
+    expect(b.helferessenStueck).toBe(2)
+    expect(b.helferessenBetragRappen).toBe(1100 + 1200)
+    expect(b.helferSofortRappen).toBe(2300)
+    expect(b.helferSpaeterRappen).toBe(0)
+    expect(b.sollChfRappen).toBe(20000 - 600)
+    expect(b.sollEurCent).toBe(2000)
+  })
+
+  it('Helfer-Zahlung bar CHF 12.00 heute -> Soll CHF + 12.00, Zeile Helfer-Zahlungen Bar CHF', () => {
+    const z = helferZahlung('hz1', SAMSTAG, 'Anna', 'bar_chf', 1200)
+    const b = berechneAbschluss(input(SAMSTAG, [], [], { helferZahlungen: [z] }))
+    expect(b.helferZahlungenBarChfRappen).toBe(1200)
+    expect(b.helferZahlungenTwintRappen).toBe(0)
+    expect(b.sollChfRappen).toBe(20000 + 1200)
+    expect(b.sollEurCent).toBe(0)
+    expect(b.barEinnahmenChfRappen).toBe(0) // keine Verkaufs-Einnahme
+    expect(b.barSpendeChfRappen).toBe(0) // keine Spende
+    expect(b.anzahlBelege).toBe(0) // kein Beleg
+  })
+
+  it('Helfer-Zahlung Twint -> Soll unverändert, Zeile Helfer-Zahlungen Twint', () => {
+    const z = helferZahlung('hz2', SAMSTAG, 'Anna', 'twint', 1200)
+    const b = berechneAbschluss(input(SAMSTAG, [], [], { helferZahlungen: [z] }))
+    expect(b.helferZahlungenTwintRappen).toBe(1200)
+    expect(b.helferZahlungenBarChfRappen).toBe(0)
+    expect(b.sollChfRappen).toBe(20000)
+    expect(b.sollEurCent).toBe(0)
+    expect(b.twintUmsatzRappen).toBe(0)
+  })
+
+  it('Helfer-Zahlung 10 EUR bei 0.90 -> Soll EUR + 10.00, CHF-Gegenwert 9.00, Soll CHF unverändert', () => {
+    const z = helferZahlung('hz3', SAMSTAG, 'Anna', 'bar_eur', 1000)
+    expect(z.betragChfRappen).toBe(900)
+    const b = berechneAbschluss(input(SAMSTAG, [], [], { helferZahlungen: [z] }))
+    expect(b.helferZahlungenEurCent).toBe(1000)
+    expect(b.helferZahlungenEurChfRappen).toBe(900)
+    expect(b.sollEurCent).toBe(1000)
+    expect(b.sollChfRappen).toBe(20000)
+    expect(b.barEinnahmenEurCent).toBe(0) // Stück EUR aus Verkäufen unverändert
+  })
+
+  it('stornierte Helfer-Zahlung und Zahlungen anderer Kassentage zählen nicht', () => {
+    const storniert = helferZahlung('hz4', SAMSTAG, 'Anna', 'bar_chf', 1200, { storniert: true })
+    const fremd = helferZahlung('hz5', SONNTAG, 'Anna', 'bar_chf', 500)
+    const b = berechneAbschluss(input(SAMSTAG, [], [], { helferZahlungen: [storniert, fremd] }))
+    expect(b.helferZahlungenBarChfRappen).toBe(0)
+    expect(b.sollChfRappen).toBe(20000)
+  })
+
+  it('Teilzahlung: Helfer schuldet 12.00, zahlt 5.00 bar -> Soll + 5.00, Saldo vom Server übernommen', () => {
+    const v = verkauf('h5', SAMSTAG, 'helfer', [DOENER], 0, { helferName: 'Anna' })
+    const z = helferZahlung('hz6', SAMSTAG, 'Anna', 'bar_chf', 500)
+    const b = berechneAbschluss(input(SAMSTAG, [v], [], { helferZahlungen: [z], helferSalden: [saldo('Anna', 700)] }))
+    expect(b.helferSpaeterRappen).toBe(1200)
+    expect(b.helferZahlungenBarChfRappen).toBe(500)
+    expect(b.sollChfRappen).toBe(20000 + 500)
+    expect(b.helferOffenGesamtRappen).toBe(700)
+    expect(b.helferOffen).toEqual([saldo('Anna', 700)])
+  })
+
+  it('stornierter Helfer-Verkauf (später zahlen) zählt nicht bei Helferessen, Storno-Auszahlung 0', () => {
+    const v = verkauf('h6', SAMSTAG, 'helfer', [BURGER], 0, { helferName: 'Beat' })
+    const bleibt = verkauf('h7', SAMSTAG, 'helfer', [DOENER], 0, { helferName: 'Beat' })
+    const st = storno(v.verkauf, SAMSTAG, 0)
+    const b = berechneAbschluss(input(SAMSTAG, [v, bleibt], [st]))
+    expect(b.helferessenStueck).toBe(1)
+    expect(b.helferessenBetragRappen).toBe(1200)
+    expect(b.helferSpaeterRappen).toBe(1200)
+    expect(b.storniAuszahlungRappen).toBe(0)
+    expect(b.sollChfRappen).toBe(20000)
+    expect(b.produkte).toEqual([{ produktId: 'doener', name: 'Döner Kebap', verkauft: 0, helfer: 1, umsatzRappen: 1200 }])
+  })
+
+  it('stornierter sofort bezahlter Helfer-Verkauf: wie normaler Storno (brutto + Auszahlung), Helferessen sinken', () => {
+    const v = verkauf('h8', SAMSTAG, 'bar_chf', [BURGER], 1100, { helferName: 'Beat' })
+    const st = storno(v.verkauf, SAMSTAG)
+    const b = berechneAbschluss(input(SAMSTAG, [v], [st]))
+    expect(b.barEinnahmenChfRappen).toBe(1100)
+    expect(b.storniAuszahlungRappen).toBe(1100)
+    expect(b.sollChfRappen).toBe(20000)
+    expect(b.helferessenStueck).toBe(0)
+    expect(b.helferSofortRappen).toBe(0)
+  })
+
+  it('offene Helfer-Schulden: nur Saldo > 0, nach Name sortiert, Gesamtsumme', () => {
+    const salden = [saldo('Zoe', 1200, 1), saldo('anna', 0, 1), saldo('Beat', 550, 2), saldo('Cem', -100, 1)]
+    const b = berechneAbschluss(input(SAMSTAG, [], [], { helferSalden: salden }))
+    expect(b.helferOffen.map((s) => s.name)).toEqual(['Beat', 'Zoe'])
+    expect(b.helferOffenGesamtRappen).toBe(1200 + 550)
+    expect(b.helferOffen[0]).toEqual(saldo('Beat', 550, 2))
+  })
+
+  it('Produktzeile: Spalte Helfer zählt sofort und später, verkauft die übrigen, Umsatz alle zu vollen Preisen', () => {
+    const normal = verkauf('h9', SAMSTAG, 'bar_chf', [DOENER], 1200)
+    const sofort = verkauf('h10', SAMSTAG, 'twint', [DOENER], 1200, { helferName: 'Anna' })
+    const spaeter = verkauf('h11', SAMSTAG, 'helfer', [{ ...DOENER, anzahl: 2 }], 0, { helferName: 'Beat' })
+    const b = berechneAbschluss(input(SAMSTAG, [normal, sofort, spaeter]))
+    expect(b.produkte).toEqual([{ produktId: 'doener', name: 'Döner Kebap', verkauft: 1, helfer: 3, umsatzRappen: 4 * 1200 }])
+    expect(b.helferessenStueck).toBe(3)
+    expect(b.helferessenBetragRappen).toBe(1200 + 2400)
+    expect(b.helferSofortRappen).toBe(1200)
+    expect(b.helferSpaeterRappen).toBe(2400)
+  })
+
+  it('älterer Helfer-Beleg ohne Namen (zahlart helfer, helferName null) zählt weiterhin als «später zahlen»', () => {
+    const v = verkauf('h12', SAMSTAG, 'helfer', [BURGER], 0)
+    v.verkauf.helferName = null
+    const b = berechneAbschluss(input(SAMSTAG, [v]))
+    expect(b.helferessenStueck).toBe(1)
+    expect(b.helferSpaeterRappen).toBe(1100)
+    expect(b.produkte[0]?.helfer).toBe(1)
   })
 })

@@ -2,7 +2,14 @@ import { copyFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { inTransaktion, leseMigrationen, migriere, oeffneDb, schemaVersion, type DatabaseSync } from './db'
+import {
+  inTransaktion,
+  leseMigrationen,
+  migriere,
+  oeffneDb,
+  schemaVersion,
+  type DatabaseSync
+} from './db'
 import { MIGRATIONEN_ORDNER } from './testumgebung'
 
 const offene: DatabaseSync[] = []
@@ -20,8 +27,8 @@ afterEach(() => {
 describe('migriere', () => {
   it('legt das Schema an und ist idempotent', () => {
     const d = db()
-    expect(migriere(d, MIGRATIONEN_ORDNER)).toBe(4)
-    expect(schemaVersion(d)).toBe(4)
+    expect(migriere(d, MIGRATIONEN_ORDNER)).toBe(5)
+    expect(schemaVersion(d)).toBe(5)
     expect(migriere(d, MIGRATIONEN_ORDNER)).toBe(0)
     const tabellen = d
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
@@ -35,6 +42,8 @@ describe('migriere', () => {
       'zahlung',
       'storno',
       'spende',
+      'helfer',
+      'helfer_zahlung',
       'druckauftrag',
       'einstellung',
       'warenkorb_entwurf',
@@ -62,17 +71,21 @@ describe('migriere', () => {
         "INSERT INTO kassentag (id, datum, kasse_praefix, kassier, startgeld_chf_rappen, geoeffnet_am) VALUES ('alt', '2026-09-19', 'K1', 'EB', 20000, '2026-09-19T10:00:00')"
       ).run()
 
-      expect(leseMigrationen(MIGRATIONEN_ORDNER).map((m) => m.version)).toEqual([1, 2, 3, 4])
-      expect(migriere(d, MIGRATIONEN_ORDNER)).toBe(3)
-      expect(schemaVersion(d)).toBe(4)
+      expect(leseMigrationen(MIGRATIONEN_ORDNER).map((m) => m.version)).toEqual([1, 2, 3, 4, 5])
+      expect(migriere(d, MIGRATIONEN_ORDNER)).toBe(4)
+      expect(schemaVersion(d)).toBe(5)
       const spalten = d
         .prepare('PRAGMA table_info(kassentag)')
         .all()
         .map((z) => z['name'])
       expect(spalten).toContain('pdf_pfad')
-      expect(d.prepare("SELECT pdf_pfad FROM kassentag WHERE id = 'alt'").get()?.['pdf_pfad']).toBeNull()
+      expect(
+        d.prepare("SELECT pdf_pfad FROM kassentag WHERE id = 'alt'").get()?.['pdf_pfad']
+      ).toBeNull()
       d.prepare("UPDATE kassentag SET pdf_pfad = 'C:/x/a.pdf' WHERE id = 'alt'").run()
-      expect(d.prepare("SELECT pdf_pfad FROM kassentag WHERE id = 'alt'").get()?.['pdf_pfad']).toBe('C:/x/a.pdf')
+      expect(d.prepare("SELECT pdf_pfad FROM kassentag WHERE id = 'alt'").get()?.['pdf_pfad']).toBe(
+        'C:/x/a.pdf'
+      )
     } finally {
       rmSync(nur001, { recursive: true, force: true })
     }
@@ -101,8 +114,8 @@ describe('migriere', () => {
         "INSERT INTO verkauf (id, kassentag_id, belegnr, zeit, zahlart, total_rappen) VALUES ('v', 'alt', 'K1-0001', '2026-09-19T10:05:00', 'bar_chf', 9800)"
       ).run()
 
-      expect(migriere(d, MIGRATIONEN_ORDNER)).toBe(2)
-      expect(schemaVersion(d)).toBe(4)
+      expect(migriere(d, MIGRATIONEN_ORDNER)).toBe(3)
+      expect(schemaVersion(d)).toBe(5)
       const spalten = d
         .prepare('PRAGMA table_info(spende)')
         .all()
@@ -182,8 +195,8 @@ describe('migriere', () => {
         "INSERT INTO verkauf (id, kassentag_id, belegnr, zeit, zahlart, total_rappen) VALUES ('v', 'alt', 'K1-0001', '2026-09-19T10:05:00', 'bar_chf', 9800)"
       ).run()
 
-      expect(migriere(d, MIGRATIONEN_ORDNER)).toBe(1)
-      expect(schemaVersion(d)).toBe(4)
+      expect(migriere(d, MIGRATIONEN_ORDNER)).toBe(2)
+      expect(schemaVersion(d)).toBe(5)
       const spalten = d
         .prepare('PRAGMA table_info(verkauf)')
         .all()
@@ -205,6 +218,126 @@ describe('migriere', () => {
       ).toEqual({ rabatt_prozent: 50, rabatt_rappen: 1350 })
     } finally {
       rmSync(bis003, { recursive: true, force: true })
+    }
+  })
+
+  it('Migration 005 läuft auf einer DB mit Stand 004: verkauf.helfer_name, Tabellen helfer und helfer_zahlung', () => {
+    // Ordner mit 001 bis 004: Stand einer Kasse vor dem Helfer-Update (17.9.2026)
+    const bis004 = mkdtempSync(join(tmpdir(), 'kasse-mig-'))
+    try {
+      for (const datei of [
+        '001_init.sql',
+        '002_kassentag_pdf.sql',
+        '003_spende.sql',
+        '004_rabatt.sql'
+      ]) {
+        copyFileSync(join(MIGRATIONEN_ORDNER, datei), join(bis004, datei))
+      }
+      const d = db()
+      expect(migriere(d, bis004)).toBe(4)
+      expect(schemaVersion(d)).toBe(4)
+      const spaltenVorher = d
+        .prepare('PRAGMA table_info(verkauf)')
+        .all()
+        .map((z) => z['name'])
+      expect(spaltenVorher).not.toContain('helfer_name')
+      // Alter Helfer-Beleg (Gratis-Regel, total 0) mit altem Schema: muss die Migration überleben
+      d.prepare(
+        "INSERT INTO kassentag (id, datum, kasse_praefix, kassier, startgeld_chf_rappen, geoeffnet_am) VALUES ('alt', '2026-09-19', 'K1', 'EB', 20000, '2026-09-19T10:00:00')"
+      ).run()
+      d.prepare(
+        "INSERT INTO verkauf (id, kassentag_id, belegnr, zeit, zahlart, total_rappen) VALUES ('v', 'alt', 'K1-0001', '2026-09-19T10:05:00', 'helfer', 0)"
+      ).run()
+
+      expect(migriere(d, MIGRATIONEN_ORDNER)).toBe(1)
+      expect(schemaVersion(d)).toBe(5)
+      const spalten = d
+        .prepare('PRAGMA table_info(verkauf)')
+        .all()
+        .map((z) => z['name'])
+      expect(spalten).toContain('helfer_name')
+      expect(
+        d.prepare("SELECT helfer_name FROM verkauf WHERE id = 'v'").get()?.['helfer_name']
+      ).toBeNull()
+
+      // Tabelle helfer: Name eindeutig ohne Gross-/Kleinschreibung
+      expect(
+        d
+          .prepare('PRAGMA table_info(helfer)')
+          .all()
+          .map((z) => z['name'])
+      ).toEqual(['id', 'name', 'erstellt_am'])
+      d.prepare(
+        "INSERT INTO helfer (id, name, erstellt_am) VALUES ('h1', 'Ali', '2026-09-19T10:06:00')"
+      ).run()
+      expect(() =>
+        d
+          .prepare(
+            "INSERT INTO helfer (id, name, erstellt_am) VALUES ('h2', 'ali', '2026-09-19T10:07:00')"
+          )
+          .run()
+      ).toThrow()
+      expect(d.prepare("SELECT id FROM helfer WHERE name = 'ALI'").get()?.['id']).toBe('h1')
+
+      // Tabelle helfer_zahlung mit CHECKs, Fremdschlüssel und Indizes
+      expect(
+        d
+          .prepare('PRAGMA table_info(helfer_zahlung)')
+          .all()
+          .map((z) => z['name'])
+      ).toEqual([
+        'id',
+        'kassentag_id',
+        'helfer_name',
+        'zeit',
+        'typ',
+        'betrag',
+        'kurs_x10000',
+        'betrag_chf_rappen',
+        'storniert_am',
+        'mit_pin'
+      ])
+      const indizes = d
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name IN ('helfer_zahlung', 'verkauf')"
+        )
+        .all()
+        .map((z) => z['name'])
+      expect(indizes).toContain('idx_helfer_zahlung_kassentag')
+      expect(indizes).toContain('idx_helfer_zahlung_helfer_name')
+      expect(indizes).toContain('idx_verkauf_helfer_name')
+      d.prepare(
+        "INSERT INTO helfer_zahlung (id, kassentag_id, helfer_name, zeit, typ, betrag, betrag_chf_rappen) VALUES ('z', 'alt', 'Ali', '2026-09-19T10:08:00', 'bar_chf', 500, 500)"
+      ).run()
+      expect(
+        d.prepare("SELECT mit_pin, storniert_am FROM helfer_zahlung WHERE id = 'z'").get()
+      ).toEqual({
+        mit_pin: 0,
+        storniert_am: null
+      })
+      expect(() =>
+        d
+          .prepare(
+            "INSERT INTO helfer_zahlung (id, kassentag_id, helfer_name, zeit, typ, betrag, betrag_chf_rappen) VALUES ('z0', 'alt', 'Ali', 't', 'bar_chf', 0, 0)"
+          )
+          .run()
+      ).toThrow()
+      expect(() =>
+        d
+          .prepare(
+            "INSERT INTO helfer_zahlung (id, kassentag_id, helfer_name, zeit, typ, betrag, betrag_chf_rappen) VALUES ('z1', 'alt', 'Ali', 't', 'helfer', 100, 100)"
+          )
+          .run()
+      ).toThrow()
+      expect(() =>
+        d
+          .prepare(
+            "INSERT INTO helfer_zahlung (id, kassentag_id, helfer_name, zeit, typ, betrag, betrag_chf_rappen) VALUES ('z2', 'fehlt', 'Ali', 't', 'twint', 100, 100)"
+          )
+          .run()
+      ).toThrow()
+    } finally {
+      rmSync(bis004, { recursive: true, force: true })
     }
   })
 

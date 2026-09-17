@@ -1,7 +1,8 @@
 /**
  * Warenkorb rechts: Zeilen mit Name, Anzahl, +/-, Loeschen, Betrag; Total gross; Zahlartenleiste.
  * Ueber dem Total der Umschalter "{satz}% Rabatt" fuer den ganzen Beleg (Mitglieder anderer Vereine);
- * ist er aktiv, stehen dort drei Zeilen: Zwischensumme, Rabatt als Abzug und Total CHF.
+ * ist er aktiv, stehen dort drei Zeilen: Zwischensumme, Rabatt als Abzug und Total CHF. Der Rabatt gilt
+ * fuer jede Zahlart, auch fuer Helfer («Helfer» oeffnet den Helferdialog: Name, gleich oder spaeter zahlen).
  * Darunter der dezente Knopf "Spende" (freie Spende ohne Kauf, unabhaengig vom Warenkorb).
  */
 import type { JSX } from 'react'
@@ -9,7 +10,7 @@ import type { Warenkorb, Zahlart } from '@core/types'
 import { formatChf } from '@core/geld'
 import { anzahlArtikel } from '@core/warenkorb'
 import { ZAHLART_NAME } from '../bezahlen'
-import { RABATT_HELFER_HINWEIS, rabattKnopfText, rabattZeileLabel, warenkorbSumme, wirksamerSatz } from '../rabatt'
+import { rabattKnopfText, rabattZeileLabel, warenkorbSumme, wirksamerSatz } from '../rabatt'
 
 interface Props {
   warenkorb: Warenkorb
@@ -45,7 +46,7 @@ export function WarenkorbPanel({
 }: Props): JSX.Element {
   const leer = warenkorb.zeilen.length === 0
   // Rechnung kommt aus @core (summeMitRabatt -> rabattBetrag); der Renderer rechnet nie selbst.
-  const summe = warenkorbSumme(warenkorb, wirksamerSatz(rabattAktiv, rabattSatz, null))
+  const summe = warenkorbSumme(warenkorb, wirksamerSatz(rabattAktiv, rabattSatz))
   return (
     <aside className="warenkorb">
       <div className="warenkorb-kopf">
@@ -91,7 +92,6 @@ export function WarenkorbPanel({
           </span>
           {rabattKnopfText(rabattSatz)}
         </button>
-        {rabattAktiv && !leer ? <span className="rabatt-hinweis">{RABATT_HELFER_HINWEIS}</span> : null}
       </div>
       {summe.rabattRappen > 0 ? (
         <>
@@ -117,7 +117,7 @@ export function WarenkorbPanel({
             className={`knopf knopf-zahlart zahlart-${za}`}
             disabled={leer || (za === 'bar_eur' && !eurMoeglich)}
             onClick={() => onZahlart(za)}
-            title={za === 'bar_eur' && !eurMoeglich ? 'EUR-Kurs fehlt (Einstellungen)' : undefined}
+            title={za === 'bar_eur' && !eurMoeglich ? 'EUR-Kurs fehlt (Einstellungen)' : za === 'helfer' ? 'Helfer: Name erfassen, gleich oder später zahlen' : undefined}
           >
             {ZAHLART_NAME[za]}
           </button>

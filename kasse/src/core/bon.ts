@@ -28,6 +28,11 @@ export const SPALTEN: Record<BonGroesse, number> = { normal: 48, doppelt: 24, dr
 /** Maximale Länge eines Produktnamens (passt doppelt breit auf den Coupon). */
 export const NAME_MAX = 24
 
+/** Maximale Länge des Helfernamens auf dem Bon (wie Produktnamen: passt doppelt breit). */
+export const HELFER_NAME_MAX = NAME_MAX
+/** Zeile unter dem Helfernamen bei «später zahlen» (doppelt, 24 Zeichen; Bindestrich statt Gedankenstrich wegen cp857). */
+export const HELFER_OFFEN_TEXT = 'OFFEN - zahlt später'
+
 const WOCHENTAGE = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'] as const
 
 // ---------------------------------------------------------------- Text-Helfer
@@ -164,13 +169,38 @@ function bon1Dokument(verkauf: Verkauf, positionen: readonly Position[], zahlung
       if (zahlung.spendeChfRappen > 0) zeilen.push(zeile(labelWert('Spende CHF - TWINT', formatChf(zahlung.spendeChfRappen))))
       break
     case 'helfer':
-      zeilen.push(zeile('HELFER', 'doppelt', 'mitte', true))
+      // «Später zahlen»: statt Gegeben/Rückgeld der Helfername (doppelt) und der Hinweis, dass das Total offen ist.
+      zeilen.push(...helferZeilenDoppelt(helferNameVon(verkauf)))
+      zeilen.push(zeile(HELFER_OFFEN_TEXT, 'doppelt', 'mitte', true))
       break
+  }
+  // «Gleich zahlen»: normale Zahlungszeilen, dazu der Helfername (der Beleg gehört zum Helferessen).
+  const helferName = helferNameVon(verkauf)
+  if (verkauf.zahlart !== 'helfer' && helferName !== null) {
+    zeilen.push(zeile(`Helfer: ${kuerze(helferName, HELFER_NAME_MAX)}`))
   }
 
   zeilen.push(LEER)
   zeilen.push(zeile(`${verkauf.belegnr}  ${formatUhrzeit(verkauf.zeit)}`, 'normal', 'rechts'))
   return { zeilen }
+}
+
+/** Helfername eines Belegs, getrimmt; null bei gewöhnlichen Verkäufen (und älteren Datenbeständen ohne Feld). */
+function helferNameVon(verkauf: Verkauf): string | null {
+  const name = typeof verkauf.helferName === 'string' ? verkauf.helferName.trim() : ''
+  return name === '' ? null : name
+}
+
+/**
+ * «HELFER: <Name>» doppelt fett zentriert. Passt Name samt Präfix nicht in 24 Zeichen, stehen «HELFER:» und der
+ * (auf 24 Zeichen gekürzte) Name auf zwei Zeilen, damit der Name nie abgeschnitten wird. Ohne Namen (alte Belege) «HELFER».
+ */
+function helferZeilenDoppelt(name: string | null): BonZeile[] {
+  if (name === null) return [zeile('HELFER', 'doppelt', 'mitte', true)]
+  const kurz = kuerze(name, HELFER_NAME_MAX)
+  const einzeilig = `HELFER: ${kurz}`
+  if (einzeilig.length <= SPALTEN.doppelt) return [zeile(einzeilig, 'doppelt', 'mitte', true)]
+  return [zeile('HELFER:', 'doppelt', 'mitte', true), zeile(kurz, 'doppelt', 'mitte', true)]
 }
 
 /** Rabatt eines Belegs in Rappen; Belege ohne Rabatt (oder aus älteren Datenbeständen) ergeben 0. */
@@ -218,7 +248,8 @@ export interface AbschlussBonOptionen {
 export const VERANSTALTUNG_MAX_LAENGE = 40
 
 /**
- * Abschluss-Bon: alle Zeilen des Berichts, Stück je Produkt, Kassier, Unterschriftslinie. Keine Schublade.
+ * Abschluss-Bon: alle Zeilen des Berichts, Stück je Produkt, offene Helfer-Schulden, Kassier, Unterschriftslinie.
+ * Keine Schublade.
  * Der Name des Anlasses kommt über `bericht.veranstaltung` (Einstellung `veranstaltung`, vom Server in den
  * AbschlussInput gelegt) und steht – falls nicht leer – zentriert und doppelt gross über "KASSENABSCHLUSS".
  */
@@ -246,7 +277,15 @@ export function bonModellAbschluss(b: AbschlussBericht, opts: AbschlussBonOption
   z.push(zeile(labelWert('Spende Twint CHF', formatChf(b.twintSpendeRappen))))
   z.push(zeile(labelWert(`  davon separat erfasst (${String(b.spendenSeparatAnzahl)})`, formatChf(b.spendenSeparatChfRappen))))
   z.push(zeile(labelWert(`Storni (${String(b.storniAnzahl)})`, formatAbzug(b.storniAuszahlungRappen))))
-  z.push(zeile(labelWert(`Helferessen ${String(b.helferessenStueck)} Stk`, formatChf(b.helferessenEntgangenRappen))))
+  // Helferessen: Betrag aller Helfer-Verkäufe des Tages; «sofort» steckt schon in Bar/Twint, «später» ist Schuld.
+  z.push(zeile(labelWert(`Helferessen (${String(b.helferessenStueck)} Stück)`, formatChf(b.helferessenBetragRappen))))
+  z.push(zeile(labelWert('  davon sofort bezahlt', formatChf(b.helferSofortRappen))))
+  z.push(zeile(labelWert('  davon später zahlen (heute offen)', formatChf(b.helferSpaeterRappen))))
+  // Helfer-Zahlungen (heute erhalten): Bar CHF/EUR liegen in der Lade und stecken im Soll, Twint nicht.
+  z.push(zeile(labelWert('Helfer-Zahlungen Bar CHF', formatChf(b.helferZahlungenBarChfRappen))))
+  z.push(zeile(labelWert('Helfer-Zahlungen Bar EUR (CHF-Gegenwert)', formatChf(b.helferZahlungenEurChfRappen))))
+  z.push(zeile(labelWert('  davon Stück EUR', `EUR ${formatEur(b.helferZahlungenEurCent)}`)))
+  z.push(zeile(labelWert('Helfer-Zahlungen Twint', formatChf(b.helferZahlungenTwintRappen))))
   // Rabatte: Umsatz je Produkt bleibt brutto (volle Preise), diese Zeile erklärt die Differenz zu den Einnahmen.
   z.push(zeile(labelWert(`Rabatte (${String(b.rabatteAnzahl)} Belege)`, formatChf(b.rabatteRappen))))
   z.push(zeile(labelWert('Nachdrucke', String(b.nachdrucke))))
@@ -269,6 +308,17 @@ export function bonModellAbschluss(b: AbschlussBericht, opts: AbschlussBonOption
     z.push(zeile(produktZeile(p.name, String(p.verkauft), String(p.helfer), formatChf(p.umsatzRappen))))
   }
   z.push(zeile(labelWert('Umsatz Produkte CHF', formatChf(umsatzTotal))))
+  z.push(TRENNLINIE)
+
+  // Offene Helfer-Schulden über ALLE Kassentage (nicht nur heute): Gesamtsumme, dann je Helfer eine Zeile.
+  z.push(zeile('OFFENE HELFER-SCHULDEN', 'normal', 'links', true))
+  z.push(zeile(labelWert('Gesamt CHF', formatChf(b.helferOffenGesamtRappen)), 'normal', 'links', true))
+  if (b.helferOffen.length === 0) {
+    z.push(zeile('  keine'))
+  }
+  for (const h of b.helferOffen) {
+    z.push(zeile(labelWert(`  ${kuerze(h.name, HELFER_NAME_MAX)}`, formatChf(h.offenRappen))))
+  }
   z.push(TRENNLINIE)
   z.push(LEER)
   z.push(zeile(`Kassier: ${b.kassier}`))

@@ -77,12 +77,20 @@ export interface Verkauf {
   belegnr: string // "K1-0042"
   zeit: string
   zahlart: Zahlart
-  /** Bereits rabattierter Betrag: das, was kassiert wurde (Zahlung, Rückgeld, Storno rechnen damit) */
+  /**
+   * Bereits rabattierter Betrag: das, was kassiert wurde (Zahlung, Rückgeld, Storno rechnen damit).
+   * Bei zahlart helfer («später zahlen») ist es der geschuldete Betrag: kein Geld in der Lade, offene Helfer-Schuld.
+   */
   totalRappen: number
-  /** Gewährter Rabattsatz auf den GANZEN Beleg in Prozent; 0 = kein Rabatt (auch bei zahlart helfer) */
+  /** Gewährter Rabattsatz auf den GANZEN Beleg in Prozent; 0 = kein Rabatt (gilt auch bei zahlart helfer) */
   rabattProzent: number
   /** Abzug in Rappen = Zwischensumme (volle Preise) − totalRappen; 0 = kein Rabatt */
   rabattRappen: number
+  /**
+   * Name des Helfers, der das Essen holt: Pflicht bei zahlart helfer («später zahlen»), gesetzt bei
+   * «gleich zahlen» (echte Zahlart bar_chf/bar_eur/twint), null bei gewöhnlichen Verkäufen.
+   */
+  helferName: string | null
   storniertAm: string | null
   stornoId: string | null
 }
@@ -102,7 +110,7 @@ export interface Zahlung {
   verkaufId: string
   waehrung: Waehrung
   kursX10000: number | null // nur bei EUR
-  gegeben: number // in der Währung: Rappen (CHF, Twint) oder Cent (EUR); Helfer: 0
+  gegeben: number // in der Währung: Rappen (CHF, Twint) oder Cent (EUR); Helfer (später zahlen): 0
   gegebenChfRappen: number // CHF-Gegenwert, bei EUR auf 5 Rappen abgerundet
   rueckgeldChfRappen: number
   spendeChfRappen: number
@@ -147,6 +155,56 @@ export interface SpendeAnfrage {
   verkaufId: string | null
 }
 
+// ---------------------------------------------------------------- Helfer (Essen holen, später zahlen)
+
+/** Gespeicherter Helfername (Tabelle helfer, Name eindeutig ohne Gross-/Kleinschreibung), zur Auswahl beim nächsten Mal. */
+export interface Helfer {
+  id: string
+  name: string
+  erstelltAm: string
+}
+
+/**
+ * Zahlung eines Helfers auf seine offene Schuld (Tabelle helfer_zahlung). Teilzahlungen erlaubt.
+ * bar_chf/bar_eur: Geld in der Lade (Schublade öffnet, kein Bon), erhöhen Soll CHF bzw. Soll EUR; twint: kein Bargeld.
+ * Storno nur per storniertAm (die zuletzt erfasste ohne PIN, ältere mit PIN); stornierte zählen nirgends.
+ */
+export interface HelferZahlung {
+  id: string
+  kassentagId: string
+  helferName: string
+  zeit: string
+  typ: SpendeTyp
+  /** Rappen bei bar_chf/twint, Cent bei bar_eur */
+  betrag: number
+  kursX10000: number | null // nur bei bar_eur
+  /** CHF-Gegenwert, bei EUR auf 5 Rappen abgerundet */
+  betragChfRappen: number
+  storniertAm: string | null
+}
+
+export interface HelferZahlungAnfrage {
+  id: string // UUID vom Client (Idempotenz)
+  helferName: string
+  typ: SpendeTyp
+  /** Rappen bei bar_chf/twint, Cent bei bar_eur; frei wählbar (Vorschlag = offener Saldo) */
+  betrag: number
+}
+
+/**
+ * Offener Saldo eines Helfers über ALLE Kassentage:
+ * Σ totalRappen der nicht stornierten Verkäufe mit zahlart helfer und diesem Namen
+ * − Σ betragChfRappen der nicht stornierten Helfer-Zahlungen dieses Namens.
+ */
+export interface HelferSaldo {
+  name: string
+  offenRappen: number
+  /** Anzahl nicht stornierter «später zahlen»-Verkäufe dieses Helfers */
+  verkaeufeAnzahl: number
+  /** Zeit des letzten Verkaufs oder der letzten Zahlung; null ohne Bewegung */
+  letzteZeit: string | null
+}
+
 export interface Druckauftrag {
   id: string
   verkaufId: string | null
@@ -186,7 +244,10 @@ export interface WarenkorbSumme {
 
 export interface ZahlungsEingabe {
   zahlart: Zahlart
-  /** Zu kassierender Betrag: ein Beleg-Rabatt ist hier bereits abgezogen (der Server rechnet ihn aus) */
+  /**
+   * Zu kassierender Betrag: ein Beleg-Rabatt ist hier bereits abgezogen (der Server rechnet ihn aus).
+   * Bei helfer der geschuldete Betrag (wird nur durchgereicht, keine Zahlung).
+   */
   totalRappen: number
   /** Rappen bei bar_chf/twint, Cent bei bar_eur, 0 bei helfer */
   gegeben: number
@@ -241,9 +302,12 @@ export interface DruckModell {
 export interface ProduktZeile {
   produktId: string
   name: string
-  verkauft: number // Stück, zahlart != helfer, nicht storniert
-  helfer: number // Stück, zahlart = helfer, nicht storniert
-  umsatzRappen: number // verkauft × preisSnapshot
+  /** Stück aus gewöhnlichen Verkäufen (ohne Helfername), nicht storniert */
+  verkauft: number
+  /** Stück aus Helfer-Verkäufen (sofort und später bezahlt), nicht storniert */
+  helfer: number
+  /** (verkauft + helfer) × voller preisSnapshot; Rabatte werden separat ausgewiesen */
+  umsatzRappen: number
 }
 
 export interface AbschlussBericht {
@@ -268,8 +332,26 @@ export interface AbschlussBericht {
   spendenSeparatChfRappen: number
   storniAnzahl: number
   storniAuszahlungRappen: number
+  /** Stück aller Helfer-Verkäufe des Tages (sofort und später bezahlt), ohne am selben Tag stornierte */
   helferessenStueck: number
-  helferessenEntgangenRappen: number
+  /** Σ totalRappen aller Helfer-Verkäufe des Tages (sofort + später), ohne am selben Tag stornierte */
+  helferessenBetragRappen: number
+  /** davon sofort bezahlt (helferName gesetzt, zahlart != helfer); steckt bereits in den Bar-/Twint-Einnahmen */
+  helferSofortRappen: number
+  /** davon später zahlen (zahlart helfer): heute entstandene Helfer-Schuld, kein Geld in der Lade */
+  helferSpaeterRappen: number
+  /** Heute erhaltene Helfer-Zahlungen Bar CHF (nicht stornierte); erhöhen Soll CHF */
+  helferZahlungenBarChfRappen: number
+  /** Heute erhaltene Helfer-Zahlungen Bar EUR in Cent (Stück EUR); erhöhen Soll EUR */
+  helferZahlungenEurCent: number
+  /** CHF-Gegenwert der heutigen Helfer-Zahlungen Bar EUR */
+  helferZahlungenEurChfRappen: number
+  /** Heute erhaltene Helfer-Zahlungen Twint (kein Bargeld) */
+  helferZahlungenTwintRappen: number
+  /** Summe aller offenen Helfer-Schulden über alle Kassentage (= Σ helferOffen) */
+  helferOffenGesamtRappen: number
+  /** Offene Helfer-Schulden je Name (nur Saldo > 0), nach Name sortiert; vom Server über alle Tage berechnet */
+  helferOffen: HelferSaldo[]
   /** Anzahl nicht stornierter Belege des Tages mit Rabatt > 0 */
   rabatteAnzahl: number
   /** Σ der gewährten Rabatte dieser Belege (erklärt die Differenz zwischen Produkt-Umsatz und Einnahmen) */
@@ -295,8 +377,13 @@ export interface VerkaufAnfrage {
   positionen: { produktId: string; anzahl: number }[]
   zahlart: Zahlart
   gegeben: number // wie ZahlungsEingabe.gegeben
-  /** Rabatt auf den ganzen Beleg in Prozent; 0 = kein Rabatt (bei zahlart helfer wirkungslos) */
+  /** Rabatt auf den ganzen Beleg in Prozent; 0 = kein Rabatt (gilt auch bei zahlart helfer) */
   rabattProzent: number
+  /**
+   * Helfername: Pflicht bei zahlart helfer («später zahlen»), bei bar_chf/bar_eur/twint gesetzt für
+   * «gleich zahlen» (Beleg trägt den Namen), sonst null.
+   */
+  helferName: string | null
   spendeBehalten: boolean
   bestaetigtHohesRueckgeld: boolean
 }

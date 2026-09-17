@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import type { Einstellungen, Warenkorb } from '@core/types'
 import { RABATT_PROZENT_STANDARD } from '@core/geld'
 import {
-  RABATT_HELFER_HINWEIS,
   entwurfMitRabatt,
   istGueltigerSatz,
   parseRabattSatz,
@@ -65,21 +64,15 @@ describe('rabattSatz aus den Einstellungen', () => {
 })
 
 describe('wirksamerSatz', () => {
-  it('gilt nur bei gedruecktem Knopf', () => {
-    expect(wirksamerSatz(true, 50, null)).toBe(50)
-    expect(wirksamerSatz(false, 50, null)).toBe(0)
-    expect(wirksamerSatz(true, 50, 'bar_chf')).toBe(50)
-    expect(wirksamerSatz(true, 50, 'bar_eur')).toBe(50)
-    expect(wirksamerSatz(true, 50, 'twint')).toBe(50)
-  })
-
-  it('ist bei Zahlart Helfer wirkungslos (Total bleibt 0, rabattProzent wird 0 gespeichert)', () => {
-    expect(wirksamerSatz(true, 50, 'helfer')).toBe(0)
+  it('gilt nur bei gedruecktem Knopf, dann fuer jede Zahlart (auch Helfer)', () => {
+    expect(wirksamerSatz(true, 50)).toBe(50)
+    expect(wirksamerSatz(false, 50)).toBe(0)
+    expect(wirksamerSatz(true, 30)).toBe(30)
   })
 
   it('ignoriert einen unsinnigen Satz, statt zu rechnen', () => {
-    expect(wirksamerSatz(true, 0, 'bar_chf')).toBe(0)
-    expect(wirksamerSatz(true, 100, 'bar_chf')).toBe(0)
+    expect(wirksamerSatz(true, 0)).toBe(0)
+    expect(wirksamerSatz(true, 100)).toBe(0)
   })
 })
 
@@ -135,7 +128,6 @@ describe('Bildschirmtexte', () => {
     expect(rabattKnopfText(30)).toBe('30% Rabatt')
     expect(rabattZeileLabel(50)).toBe('Rabatt 50%')
     expect(rabattKopfText(50, 1350)).toBe('inkl. 50% Rabatt (− CHF 13.50)')
-    expect(RABATT_HELFER_HINWEIS).toBe('Bei Helfer ohne Wirkung')
   })
 })
 

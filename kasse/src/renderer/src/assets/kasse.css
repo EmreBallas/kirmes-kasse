@@ -1354,3 +1354,191 @@ textarea.eingabe {
   overflow: auto;
   align-items: start;
 }
+
+/* ---------------------------------------------------------------- Helfer (Essen holen, gleich oder spaeter zahlen) */
+
+/* Kopf des Bezahldialogs bei Helfer «gleich zahlen» */
+.bezahlen-helfer {
+  font-size: 22px;
+  font-weight: 700;
+  padding: 6px 14px;
+  border-radius: 8px;
+  background: var(--gelb-hell);
+  border: 2px solid var(--gelb-rand);
+  color: var(--gelb-rand);
+}
+
+/* Helferdialog: Schritte Name / Weg / Zahlart */
+.helfer-schritt {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+  overflow: auto;
+}
+.helfer-neu {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+.helfer-neu-feld {
+  flex: 1;
+  margin-bottom: 0;
+}
+.helfer-neu-feld input {
+  font-size: 26px;
+  min-height: 56px;
+}
+.helfer-namen {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+}
+.knopf-helfername {
+  min-height: 72px;
+  font-size: 24px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.helfer-hinweis {
+  font-size: 20px;
+  color: var(--text-schwach);
+  margin: 0;
+}
+.helfer-total {
+  flex: 0 0 auto;
+  max-width: 640px;
+}
+.helfer-wege {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  flex: 1;
+  min-height: 200px;
+}
+.knopf-weg {
+  flex-direction: column;
+  gap: 8px;
+  white-space: normal;
+  min-height: 200px;
+  padding: 20px;
+}
+.knopf-weg-gleich {
+  background: var(--gruen);
+  border-color: var(--gruen);
+  color: #ffffff;
+}
+.knopf-weg-spaeter {
+  background: var(--gelb-hell);
+  border-color: var(--gelb-rand);
+  color: var(--gelb-rand);
+}
+.weg-titel {
+  font-size: 32px;
+  font-weight: 800;
+}
+.weg-betrag {
+  font-size: 40px;
+  font-weight: 800;
+}
+.weg-text {
+  font-size: 18px;
+  font-weight: 500;
+}
+.helfer-zahlarten {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+.knopf-zahlart-gross {
+  min-height: 120px;
+  font-size: 28px;
+}
+
+/* Banner nach «Spaeter zahlen» */
+.banner-helfer-offen {
+  color: var(--gelb-rand);
+}
+.banner-helfer-saldo {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+/* Letzte Verkaeufe: Helfer unter der Zahlart, «offen» als Marke */
+.helfer-marke {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--gelb-rand);
+  white-space: nowrap;
+}
+.marke-offen {
+  background: var(--gelb-hell);
+  color: var(--gelb-rand);
+}
+
+/* Bildschirm «Helfer» */
+.helfer-gesamt {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 12px 0 16px 0;
+  padding: 14px 20px;
+  border-radius: 12px;
+  background: var(--gelb-hell);
+  border: 3px solid var(--gelb-rand);
+}
+.helfer-gesamt-label {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--gelb-rand);
+}
+.helfer-gesamt-betrag {
+  font-size: 48px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--gelb-rand);
+}
+.helfer-gesamt-zusatz {
+  font-size: 16px;
+  color: var(--text-schwach);
+}
+.tabelle-helfer {
+  max-width: 1000px;
+}
+.tabelle-helfer .helfer-name {
+  font-size: 20px;
+  font-weight: 700;
+}
+.tabelle-helfer .helfer-offen {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--gelb-rand);
+}
+
+/* Helfer-Zahlung: Warnung bei Betrag ueber dem Saldo */
+.bz-zeile-warnung {
+  border-color: var(--gelb-rand);
+  background: var(--gelb-hell);
+}
+.bz-zeile-warnung .bz-label,
+.bz-zeile-warnung .bz-rueckgeld {
+  color: var(--gelb-rand);
+}
+.helfer-warnung {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--gelb-hell);
+  border: 2px solid var(--gelb-rand);
+  color: var(--gelb-rand);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+/* Abschluss: Abschnitt «Offene Helfer-Schulden gesamt» */
+.bericht-helfer-gesamt > span:last-child {
+  color: var(--gelb-rand);
+}

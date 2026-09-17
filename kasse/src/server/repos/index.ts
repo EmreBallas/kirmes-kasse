@@ -8,6 +8,7 @@ import { erstelleDruckauftragRepo, type DruckauftragRepo } from './druckauftragR
 import { erstelleEinstellungRepo, type EinstellungRepo } from './einstellungRepo'
 import { erstelleKassentagRepo, type KassentagRepo } from './kassentagRepo'
 import { erstelleKontext, type RepoKontext } from './kontext'
+import { erstelleHelferRepo, type HelferRepo } from './helferRepo'
 import { erstelleProduktRepo, type ProduktRepo } from './produktRepo'
 import { erstelleSpendeRepo, type SpendeRepo } from './spendeRepo'
 import { erstelleStornoRepo, type StornoRepo } from './stornoRepo'
@@ -21,12 +22,14 @@ export interface Repos {
   verkauf: VerkaufRepo
   storno: StornoRepo
   spende: SpendeRepo
+  helfer: HelferRepo
   druckauftrag: DruckauftragRepo
   einstellung: EinstellungRepo
   warenkorb: WarenkorbRepo
   /**
-   * Werkzeug "Testdaten löschen": entfernt Verkäufe, Positionen, Zahlungen, Storni, Spenden, Druckaufträge,
-   * Kassentage und den Warenkorb-Entwurf; setzt den Belegzähler auf 0; behält Produkte und Einstellungen.
+   * Werkzeug "Testdaten löschen": entfernt Verkäufe, Positionen, Zahlungen, Storni, Spenden, Helfer-Zahlungen,
+   * Druckaufträge, Kassentage und den Warenkorb-Entwurf; setzt den Belegzähler auf 0; behält Produkte,
+   * Einstellungen und die gespeicherten Helfernamen (Stammdaten).
    */
   loescheTestdaten(): void
 }
@@ -42,6 +45,7 @@ export function erstelleRepos(db: DatabaseSync, uhr?: Uhr, neueId?: () => string
     verkauf: erstelleVerkaufRepo(kontext, einstellung, druckauftrag),
     storno: erstelleStornoRepo(kontext),
     spende: erstelleSpendeRepo(kontext),
+    helfer: erstelleHelferRepo(kontext),
     druckauftrag,
     einstellung,
     warenkorb: erstelleWarenkorbRepo(kontext),
@@ -50,6 +54,7 @@ export function erstelleRepos(db: DatabaseSync, uhr?: Uhr, neueId?: () => string
         for (const tabelle of [
           'druckauftrag',
           'spende',
+          'helfer_zahlung',
           'storno',
           'zahlung',
           'position',
@@ -89,6 +94,13 @@ export { erstelleStornoRepo, istStornoGrund } from './stornoRepo'
 export type { StornoRepo, StornoNeu } from './stornoRepo'
 export { erstelleSpendeRepo, istSpendeTyp } from './spendeRepo'
 export type { SpendeRepo, SpendeEintrag, SpendeErstellt, SpendeStornoErgebnis } from './spendeRepo'
+export { erstelleHelferRepo, helferSchluessel, pruefeHelferName } from './helferRepo'
+export type {
+  HelferRepo,
+  HelferZahlungEintrag,
+  HelferZahlungErstellt,
+  HelferZahlungStornoErgebnis
+} from './helferRepo'
 export { erstelleDruckauftragRepo } from './druckauftragRepo'
 export type { DruckauftragRepo, DruckauftragNeu, DruckauftragMarkierung } from './druckauftragRepo'
 export {

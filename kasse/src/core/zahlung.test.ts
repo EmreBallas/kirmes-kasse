@@ -155,9 +155,9 @@ describe('twint', () => {
   })
 })
 
-describe('helfer', () => {
-  it('alles 0, gedeckt', () => {
-    const r = berechneZahlung(eingabe({ zahlart: 'helfer', totalRappen: 0, gegeben: 0 }))
+describe('helfer (später zahlen)', () => {
+  it('Total 1200 geschuldet: gegeben 0, Rückgeld 0, Spende 0, gedeckt', () => {
+    const r = berechneZahlung(eingabe({ zahlart: 'helfer', totalRappen: 1200, gegeben: 0 }))
     expect(r).toEqual({
       gedeckt: true,
       warnungen: [],
@@ -171,10 +171,20 @@ describe('helfer', () => {
       totalEurCent: null
     })
   })
-  it('ignoriert gegeben und Total (Helfer zahlt nie)', () => {
+  it('ignoriert gegeben (Helfer zahlt jetzt nichts), das Total bleibt als Schuld unangetastet', () => {
     const r = berechneZahlung(eingabe({ zahlart: 'helfer', totalRappen: 1100, gegeben: 5000 }))
     expect(r.gedeckt).toBe(true)
     expect(r.gegeben).toBe(0)
+    expect(r.gegebenChfRappen).toBe(0)
     expect(r.rueckgeldChfRappen).toBe(0)
+    expect(r.spendeChfRappen).toBe(0)
+    expect(r.warnungen).toEqual([])
+  })
+  it('Total 0 (nichts geschuldet) bleibt erlaubt', () => {
+    expect(berechneZahlung(eingabe({ zahlart: 'helfer', totalRappen: 0, gegeben: 0 })).gedeckt).toBe(true)
+  })
+  it('lehnt Fliesskomma und negatives Total ab', () => {
+    expect(() => berechneZahlung(eingabe({ zahlart: 'helfer', totalRappen: 12.5, gegeben: 0 }))).toThrow()
+    expect(() => berechneZahlung(eingabe({ zahlart: 'helfer', totalRappen: -100, gegeben: 0 }))).toThrow()
   })
 })

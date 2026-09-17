@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  HELFER_NAME_MAX,
+  HELFER_OFFEN_TEXT,
   SPALTEN,
   bonModellAbschluss,
   bonModellTest,
@@ -21,6 +23,7 @@ const VERKAUF: Verkauf = {
   totalRappen: 4500,
   rabattProzent: 0,
   rabattRappen: 0,
+  helferName: null,
   storniertAm: null,
   stornoId: null
 }
@@ -46,6 +49,9 @@ const ZAHLUNG_BAR: Zahlung = {
   spendeChfRappen: 0,
   spendeTyp: null
 }
+
+/** Zahlung eines «später zahlen»-Belegs: keine Zahlung an der Kasse. */
+const ZAHLUNG_HELFER: Zahlung = { ...ZAHLUNG_BAR, gegeben: 0, gegebenChfRappen: 0, rueckgeldChfRappen: 0 }
 
 const texte = (d: BonDokument): string[] => d.zeilen.map((z) => z.text)
 const letztes = (m: DruckModell): BonDokument => {
@@ -204,8 +210,8 @@ describe('bonModellVerkauf – Twint, EUR, Helfer', () => {
     expect(barEur.some((x) => x.includes('TWINT'))).toBe(false)
     expect(barEur).toContain('Spende CHF                                  1.00')
 
-    const vHelfer: Verkauf = { ...VERKAUF, zahlart: 'helfer', totalRappen: 0 }
-    const helfer = texte(letztes(bonModellVerkauf(vHelfer, POSITIONEN, { ...ZAHLUNG_BAR, gegeben: 0, gegebenChfRappen: 0, rueckgeldChfRappen: 0 }, { nachdruck: null })))
+    const vHelfer: Verkauf = { ...VERKAUF, zahlart: 'helfer', helferName: 'Anna' }
+    const helfer = texte(letztes(bonModellVerkauf(vHelfer, POSITIONEN, ZAHLUNG_HELFER, { nachdruck: null })))
     expect(helfer.some((x) => x.includes('TWINT'))).toBe(false)
   })
 
@@ -223,16 +229,101 @@ describe('bonModellVerkauf – Twint, EUR, Helfer', () => {
     pruefeBreiten(m)
   })
 
-  it('Helfer: Zeile HELFER, keine Schublade, Coupons werden gedruckt', () => {
-    const v: Verkauf = { ...VERKAUF, zahlart: 'helfer', totalRappen: 0 }
-    const z: Zahlung = { ...ZAHLUNG_BAR, gegeben: 0, gegebenChfRappen: 0, rueckgeldChfRappen: 0 }
-    const m = bonModellVerkauf(v, POSITIONEN, z, { nachdruck: null })
+  it('Helfer später zahlen: HELFER: <Name> und OFFEN statt Gegeben/Rückgeld, keine Schublade, Coupons gedruckt', () => {
+    const v: Verkauf = { ...VERKAUF, zahlart: 'helfer', helferName: 'Anna Muster' }
+    const m = bonModellVerkauf(v, POSITIONEN, ZAHLUNG_HELFER, { nachdruck: null })
     expect(m.schublade).toBe(false)
     expect(m.dokumente).toHaveLength(4)
+    pruefeBreiten(m)
     const bon = letztes(m)
-    expect(bon.zeilen).toContainEqual({ text: 'HELFER', groesse: 'doppelt', ausrichtung: 'mitte', fett: true })
+    expect(texte(bon)).toEqual([
+      '  1 Winti Burger                           11.00',
+      '  1 Lahmacun                                5.00',
+      '  2 Döner Kebap                            24.00',
+      '  2 Getränk Dose                            5.00',
+      '-'.repeat(48),
+      labelWert('TOTAL CHF', '45.00'),
+      'HELFER: Anna Muster',
+      HELFER_OFFEN_TEXT,
+      '',
+      'K1-0042  14:32'
+    ])
+    expect(bon.zeilen[6]).toEqual({ text: 'HELFER: Anna Muster', groesse: 'doppelt', ausrichtung: 'mitte', fett: true })
+    expect(bon.zeilen[7]).toEqual({ text: 'OFFEN - zahlt später', groesse: 'doppelt', ausrichtung: 'mitte', fett: true })
     expect(texte(bon).some((x) => x.startsWith('Gegeben'))).toBe(false)
     expect(texte(bon).some((x) => x.startsWith('RÜCKGELD'))).toBe(false)
+    expect(texte(bon).some((x) => x.startsWith('Helfer:'))).toBe(false) // keine zweite Namenszeile
+    // Coupons unverändert
+    expect(texte(m.dokumente[0] ?? { zeilen: [] })).toEqual(['1x', 'Winti Burger', '', 'Sa 19.09.2026  14:32', 'K1-0042   Coupon 1/3'])
+  })
+
+  it('Helfer später zahlen mit Rabatt: Zwischensumme, Rabatt, rabattiertes TOTAL als Schuld', () => {
+    const v: Verkauf = { ...VERKAUF, zahlart: 'helfer', helferName: 'Anna', totalRappen: 2250, rabattProzent: 50, rabattRappen: 2250 }
+    const t = texte(letztes(bonModellVerkauf(v, POSITIONEN, ZAHLUNG_HELFER, { nachdruck: null })))
+    expect(t).toContain(labelWert('Zwischensumme', '45.00'))
+    expect(t).toContain(labelWert('Rabatt 50%', '-22.50'))
+    expect(t).toContain(labelWert('TOTAL CHF', '22.50'))
+    expect(t).toContain('HELFER: Anna')
+    expect(t).toContain(HELFER_OFFEN_TEXT)
+  })
+
+  it('Helfer später zahlen: langer Name auf zwei Zeilen (HELFER: und Name auf 24 Zeichen gekürzt)', () => {
+    const v: Verkauf = { ...VERKAUF, zahlart: 'helfer', helferName: 'Maximiliane Musterfrau-Beispiel' }
+    const m = bonModellVerkauf(v, POSITIONEN, ZAHLUNG_HELFER, { nachdruck: null })
+    pruefeBreiten(m)
+    const t = texte(letztes(m))
+    const i = t.indexOf('HELFER:')
+    expect(i).toBeGreaterThan(-1)
+    expect(t[i + 1]).toBe('Maximiliane Musterfrau-Beispiel'.slice(0, HELFER_NAME_MAX))
+    expect(t[i + 1]).toHaveLength(24)
+    expect(t[i + 2]).toBe(HELFER_OFFEN_TEXT)
+    expect(letztes(m).zeilen[i + 1]).toEqual({ text: 'Maximiliane Musterfrau-B', groesse: 'doppelt', ausrichtung: 'mitte', fett: true })
+  })
+
+  it('Helfer später zahlen ohne Namen (älterer Beleg): Zeile HELFER wie bisher', () => {
+    const v: Verkauf = { ...VERKAUF, zahlart: 'helfer', helferName: null }
+    const bon = letztes(bonModellVerkauf(v, POSITIONEN, ZAHLUNG_HELFER, { nachdruck: null }))
+    expect(bon.zeilen).toContainEqual({ text: 'HELFER', groesse: 'doppelt', ausrichtung: 'mitte', fett: true })
+    expect(texte(bon)).toContain(HELFER_OFFEN_TEXT)
+  })
+
+  it('Helfer gleich zahlen bar: normale Zahlungszeilen plus Zeile Helfer: <Name>, Schublade auf', () => {
+    const v: Verkauf = { ...VERKAUF, helferName: 'Anna Muster' }
+    const m = bonModellVerkauf(v, POSITIONEN, ZAHLUNG_BAR, { nachdruck: null })
+    expect(m.schublade).toBe(true)
+    pruefeBreiten(m)
+    expect(texte(letztes(m))).toEqual([
+      '  1 Winti Burger                           11.00',
+      '  1 Lahmacun                                5.00',
+      '  2 Döner Kebap                            24.00',
+      '  2 Getränk Dose                            5.00',
+      '-'.repeat(48),
+      labelWert('TOTAL CHF', '45.00'),
+      labelWert('Gegeben CHF', '50.00'),
+      'RÜCKGELD CHF        5.00',
+      'Helfer: Anna Muster',
+      '',
+      'K1-0042  14:32'
+    ])
+    expect(letztes(m).zeilen[8]).toEqual({ text: 'Helfer: Anna Muster' })
+  })
+
+  it('Helfer gleich zahlen per Twint: Twint-Zeilen plus Helfer-Zeile, keine Schublade; Name gekürzt', () => {
+    const v: Verkauf = { ...VERKAUF, zahlart: 'twint', helferName: 'Maximiliane Musterfrau-Beispiel' }
+    const z: Zahlung = { ...ZAHLUNG_BAR, gegeben: 4500, gegebenChfRappen: 4500, rueckgeldChfRappen: 0 }
+    const m = bonModellVerkauf(v, POSITIONEN, z, { nachdruck: null })
+    expect(m.schublade).toBe(false)
+    const t = texte(letztes(m))
+    expect(t).toContain('Gegeben CHF - TWINT                        45.00')
+    expect(t).toContain('Helfer: Maximiliane Musterfrau-B')
+    expect(t.some((x) => x.startsWith('HELFER'))).toBe(false)
+  })
+
+  it('ohne Helfername bleibt der Bon exakt wie bisher (keine Helfer-Zeile)', () => {
+    const t = texte(letztes(bonModellVerkauf(VERKAUF, POSITIONEN, ZAHLUNG_BAR, { nachdruck: null })))
+    expect(t.some((x) => x.includes('Helfer') || x.includes('HELFER'))).toBe(false)
+    const leer = texte(letztes(bonModellVerkauf({ ...VERKAUF, helferName: '   ' }, POSITIONEN, ZAHLUNG_BAR, { nachdruck: null })))
+    expect(leer).toEqual(t)
   })
 
   it('lange Namen werden auf die Spaltenzahl gekürzt', () => {
@@ -266,7 +357,18 @@ describe('bonModellAbschluss', () => {
     storniAnzahl: 2,
     storniAuszahlungRappen: 1700,
     helferessenStueck: 5,
-    helferessenEntgangenRappen: 5500,
+    helferessenBetragRappen: 5500,
+    helferSofortRappen: 2200,
+    helferSpaeterRappen: 3300,
+    helferZahlungenBarChfRappen: 1200,
+    helferZahlungenEurCent: 1000,
+    helferZahlungenEurChfRappen: 900,
+    helferZahlungenTwintRappen: 500,
+    helferOffenGesamtRappen: 1750,
+    helferOffen: [
+      { name: 'Anna Muster', offenRappen: 1200, verkaeufeAnzahl: 1, letzteZeit: '2026-09-19T12:00:00' },
+      { name: 'Beat', offenRappen: 550, verkaeufeAnzahl: 2, letzteZeit: '2026-09-19T13:00:00' }
+    ],
     rabatteAnzahl: 2,
     rabatteRappen: 2700,
     nachdrucke: 1,
@@ -306,9 +408,21 @@ describe('bonModellAbschluss', () => {
     expect(t).toContain(labelWert('  davon separat erfasst (3)', '6.50'))
     expect(t.indexOf(labelWert('  davon separat erfasst (3)', '6.50'))).toBe(t.indexOf(labelWert('Spende Twint CHF', '3.00')) + 1)
     expect(t).toContain(labelWert('Storni (2)', '-17.00'))
-    expect(t).toContain(labelWert('Helferessen 5 Stk', '55.00'))
+    // Helferessen und Helfer-Zahlungen des Tages, in dieser Reihenfolge nach den Storni
+    const iHelfer = t.indexOf(labelWert('Helferessen (5 Stück)', '55.00'))
+    expect(iHelfer).toBe(t.indexOf(labelWert('Storni (2)', '-17.00')) + 1)
+    expect(t.slice(iHelfer, iHelfer + 7)).toEqual([
+      labelWert('Helferessen (5 Stück)', '55.00'),
+      labelWert('  davon sofort bezahlt', '22.00'),
+      labelWert('  davon später zahlen (heute offen)', '33.00'),
+      labelWert('Helfer-Zahlungen Bar CHF', '12.00'),
+      labelWert('Helfer-Zahlungen Bar EUR (CHF-Gegenwert)', '9.00'),
+      labelWert('  davon Stück EUR', 'EUR 10.00'),
+      labelWert('Helfer-Zahlungen Twint', '5.00')
+    ])
+    expect(t.some((x) => x.includes('entgangen'))).toBe(false)
     expect(t).toContain(labelWert('Rabatte (2 Belege)', '27.00'))
-    expect(t.indexOf(labelWert('Rabatte (2 Belege)', '27.00'))).toBe(t.indexOf(labelWert('Helferessen 5 Stk', '55.00')) + 1)
+    expect(t.indexOf(labelWert('Rabatte (2 Belege)', '27.00'))).toBe(iHelfer + 7)
     expect(t).toContain(labelWert('Nachdrucke', '1'))
     expect(t).toContain(labelWert('SOLL CHF', '1415.50'))
     expect(t).toContain(labelWert('IST CHF', '1415.00'))
@@ -323,6 +437,36 @@ describe('bonModellAbschluss', () => {
     expect(t).toContain('Kassier: MK')
     expect(t).toContain('_'.repeat(48))
     expect(t).toContain('Unterschrift Kassier')
+  })
+
+  it('Abschnitt Offene Helfer-Schulden: Gesamtsumme und eine Zeile je Helfer, nach den Produktzeilen', () => {
+    const m = bonModellAbschluss(bericht)
+    const bon = letztes(m)
+    const t = texte(bon)
+    const i = t.indexOf('OFFENE HELFER-SCHULDEN')
+    expect(i).toBeGreaterThan(t.indexOf(labelWert('Umsatz Produkte CHF', '811.00')))
+    expect(bon.zeilen[i]).toEqual({ text: 'OFFENE HELFER-SCHULDEN', fett: true })
+    expect(bon.zeilen[i + 1]).toEqual({ text: labelWert('Gesamt CHF', '17.50'), fett: true })
+    expect(t[i + 2]).toBe(labelWert('  Anna Muster', '12.00'))
+    expect(t[i + 3]).toBe(labelWert('  Beat', '5.50'))
+    expect(t[i + 4]).toBe('-'.repeat(48))
+    expect(t.indexOf('Kassier: MK', i)).toBeGreaterThan(i + 4)
+    expect(t.some((x) => x.includes('keine'))).toBe(false)
+  })
+
+  it('ohne offene Helfer-Schulden: Gesamt 0.00 und Zeile "keine"', () => {
+    const t = texte(letztes(bonModellAbschluss({ ...bericht, helferOffenGesamtRappen: 0, helferOffen: [] })))
+    const i = t.indexOf('OFFENE HELFER-SCHULDEN')
+    expect(t[i + 1]).toBe(labelWert('Gesamt CHF', '0.00'))
+    expect(t[i + 2]).toBe('  keine')
+  })
+
+  it('langer Helfername in der Schuldenliste wird gekürzt, Zeile bleibt 48 Zeichen', () => {
+    const lang = { name: 'Maximiliane Musterfrau-Beispiel von Irgendwo', offenRappen: 123456, verkaeufeAnzahl: 3, letzteZeit: null }
+    const m = bonModellAbschluss({ ...bericht, helferOffen: [lang], helferOffenGesamtRappen: 123456 })
+    pruefeBreiten(m)
+    const t = texte(letztes(m))
+    expect(t).toContain(labelWert('  Maximiliane Musterfrau-B', '1234.56'))
   })
 
   it('Nachdruck: erste Zeile NACHDRUCK doppelt fett, sonst identisch', () => {
@@ -423,7 +567,15 @@ describe('bonModellAbschluss – Rabatte und Veranstaltung', () => {
     storniAnzahl: 0,
     storniAuszahlungRappen: 0,
     helferessenStueck: 0,
-    helferessenEntgangenRappen: 0,
+    helferessenBetragRappen: 0,
+    helferSofortRappen: 0,
+    helferSpaeterRappen: 0,
+    helferZahlungenBarChfRappen: 0,
+    helferZahlungenEurCent: 0,
+    helferZahlungenEurChfRappen: 0,
+    helferZahlungenTwintRappen: 0,
+    helferOffenGesamtRappen: 0,
+    helferOffen: [],
     rabatteAnzahl: 1,
     rabatteRappen: 1350,
     nachdrucke: 0,
@@ -438,9 +590,10 @@ describe('bonModellAbschluss – Rabatte und Veranstaltung', () => {
     erstelltAm: ''
   }
 
-  it('Rabattzeile direkt nach der Helferessen-Zeile', () => {
+  it('Rabattzeile direkt nach dem Helfer-Block (letzte Zeile Helfer-Zahlungen Twint)', () => {
     const t = texte(letztes(bonModellAbschluss(BASIS)))
-    const i = t.indexOf(labelWert('Helferessen 0 Stk', '0.00'))
+    expect(t).toContain(labelWert('Helferessen (0 Stück)', '0.00'))
+    const i = t.indexOf(labelWert('Helfer-Zahlungen Twint', '0.00'))
     expect(i).toBeGreaterThan(-1)
     expect(t[i + 1]).toBe(labelWert('Rabatte (1 Belege)', '13.50'))
     // Umsatz je Produkt bleibt brutto; die Rabattzeile erklärt die Differenz zu den Einnahmen

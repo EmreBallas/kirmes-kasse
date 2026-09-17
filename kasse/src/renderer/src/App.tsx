@@ -1,6 +1,6 @@
 /**
  * Wurzel der Kasse: haelt Ansicht, Kassentag, Einstellungen, Warenkorb (Entwurf) und Banner.
- * Kein Router: ansicht = 'start' | 'verkauf' | 'letzte' | 'abschluss' | 'verwaltung' | 'einstellungen'.
+ * Kein Router: ansicht = 'start' | 'verkauf' | 'letzte' | 'helfer' | 'abschluss' | 'verwaltung' | 'einstellungen'.
  */
 import { useCallback, useEffect, useState, type JSX } from 'react'
 import type { Einstellungen as EinstellungenTyp, Kassentag, Warenkorb } from '@core/types'
@@ -11,13 +11,14 @@ import { useStatus, useWarenkorbSicherung } from './hooks'
 import { rabattAusEntwurf } from './rabatt'
 import { Abschluss } from './components/Abschluss'
 import { Einstellungen } from './components/Einstellungen'
+import { Helfer } from './components/Helfer'
 import { Kassenstart } from './components/Kassenstart'
 import { LetzteVerkaeufe } from './components/LetzteVerkaeufe'
 import { PinDialog } from './components/PinDialog'
 import { Verkauf } from './components/Verkauf'
 import { Verwaltung } from './components/Verwaltung'
 
-export type Ansicht = 'start' | 'verkauf' | 'letzte' | 'abschluss' | 'verwaltung' | 'einstellungen'
+export type Ansicht = 'start' | 'verkauf' | 'letzte' | 'helfer' | 'abschluss' | 'verwaltung' | 'einstellungen'
 
 type Geschuetzt = 'verwaltung' | 'einstellungen'
 
@@ -192,6 +193,9 @@ function App(): JSX.Element {
         />
       )
 
+    case 'helfer':
+      return <Helfer kursX10000={einstellungen?.eurKursX10000 ?? 0} onZurueck={zumVerkauf} />
+
     case 'abschluss': {
       const tag = abschlussTag ?? kassentag
       if (tag === null) {
@@ -248,6 +252,7 @@ function App(): JSX.Element {
           onSpendeErfasst={(spende) => setBanner((alt) => bannerNachSpende(alt, spende))}
           onBeenden={beendenMoeglich ? beendenAnfragen : undefined}
           onLetzte={() => setAnsicht('letzte')}
+          onHelfer={() => setAnsicht('helfer')}
           onAbschluss={() => {
             setAbschlussTag(null)
             setAnsicht('abschluss')

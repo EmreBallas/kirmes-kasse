@@ -10,6 +10,10 @@ import type {
   Druckauftrag,
   Einstellungen,
   FehlerAntwort,
+  Helfer,
+  HelferSaldo,
+  HelferZahlung,
+  HelferZahlungAnfrage,
   Kassentag,
   KassentagAbschlussAnfrage,
   KassentagStartAnfrage,
@@ -24,11 +28,11 @@ import type {
   StornoGrund,
   Verkauf,
   VerkaufAnfrage,
-  VerkaufAntwort,
   Zahlung
 } from '@core/types'
 import type { WarenkorbEntwurf } from './rabatt'
 import type { DruckerAntwort } from './drucker'
+import type { HelferZahlungAntwort, LetzteHelferZahlung, VerkaufAntwortMitSaldo } from './helfer'
 
 /** Port des Vite-Dev-Servers (npm run dev); nur dort liegt der Kassen-Server auf einer anderen Adresse. */
 export const VITE_DEV_PORT = '5173'
@@ -125,6 +129,12 @@ export interface SpendeAntwort {
 
 /** Zeile von GET /api/spende/letzte: Spende mit Belegnummer des verknuepften Verkaufs (null bei freier Spende). */
 export type LetzteSpende = Spende & { belegnr: string | null }
+
+/** Antwort von GET /api/helfer: gespeicherte Helfernamen und die offenen Salden (ueber alle Kassentage). */
+export interface HelferAntwort {
+  helfer: Helfer[]
+  salden: HelferSaldo[]
+}
 
 export interface EinstellungenAenderung extends Partial<Einstellungen> {
   neuePin?: string
@@ -236,7 +246,7 @@ export function erstelleApi(
         {}
       ),
 
-    verkauf: (daten) => anfrage<VerkaufAntwort>('POST', '/api/verkauf', daten),
+    verkauf: (daten) => anfrage<VerkaufAntwortMitSaldo>('POST', '/api/verkauf', daten),
     letzteVerkaeufe: (limit = 20) =>
       anfrage<LetzterVerkauf[]>('GET', `/api/verkauf/letzte?limit=${String(limit)}`),
     storno: (verkaufId, grund, pin) => {
@@ -255,6 +265,14 @@ export function erstelleApi(
     spendeErfassen: (daten) => anfrage<SpendeAntwort>('POST', '/api/spende', daten),
     spendenLetzte: (limit = 20) => anfrage<LetzteSpende[]>('GET', `/api/spende/letzte?limit=${String(limit)}`),
     spendeStorno: (id, pin) => anfrage<Spende>('POST', `/api/spende/${encodeURIComponent(id)}/storno`, {}, pin),
+
+    helfer: () => anfrage<HelferAntwort>('GET', '/api/helfer'),
+    helferAnlegen: (name) => anfrage<Helfer>('POST', '/api/helfer', { name }),
+    helferZahlung: (daten) => anfrage<HelferZahlungAntwort>('POST', '/api/helfer/zahlung', daten),
+    helferZahlungenLetzte: (limit = 20) =>
+      anfrage<LetzteHelferZahlung[]>('GET', `/api/helfer/zahlungen/letzte?limit=${String(limit)}`),
+    helferZahlungStorno: (id, pin) =>
+      anfrage<HelferZahlung>('POST', `/api/helfer/zahlung/${encodeURIComponent(id)}/storno`, {}, pin),
 
     druckauftrag: (id) =>
       anfrage<Druckauftrag>('GET', `/api/druck/${encodeURIComponent(id)}`, undefined, undefined, zeitlimits.status),
@@ -293,7 +311,8 @@ export interface KasseApi {
   abschluss(kassentagId: string, daten: KassentagAbschlussAnfrage): Promise<AbschlussBericht>
   /** Nachdruck des Abschluss-Bons eines abgeschlossenen Kassentags (Testfall 32) */
   abschlussNachdruck(kassentagId: string): Promise<{ druckauftragId: string }>
-  verkauf(daten: VerkaufAnfrage): Promise<VerkaufAntwort>
+  /** Verkauf speichern; bei zahlart helfer liefert der Server zusaetzlich `offenRappen` (Saldo des Helfers danach) */
+  verkauf(daten: VerkaufAnfrage): Promise<VerkaufAntwortMitSaldo>
   letzteVerkaeufe(limit?: number): Promise<LetzterVerkauf[]>
   storno(verkaufId: string, grund: StornoGrund, pin?: string): Promise<Storno>
   nachdruck(verkaufId: string, was: NachdruckAnfrage['was']): Promise<{ druckauftragId: string }>
@@ -306,6 +325,19 @@ export interface KasseApi {
   spendenLetzte(limit?: number): Promise<LetzteSpende[]>
   /** Spende stornieren: ohne PIN nur die zuletzt erfasste, sonst 403 pin_falsch (dann mit PIN wiederholen); 409 wenn schon storniert */
   spendeStorno(id: string, pin?: string): Promise<Spende>
+  /** Bekannte Helfernamen (alphabetisch fuer die Auswahl) und offene Salden ueber alle Kassentage */
+  helfer(): Promise<HelferAntwort>
+  /** Neuen Helfernamen speichern (eindeutig ohne Gross-/Kleinschreibung; bei bekanntem Namen antwortet der Server mit dem bestehenden oder 409) */
+  helferAnlegen(name: string): Promise<Helfer>
+  /**
+   * Zahlung eines Helfers auf seine Schuld (Teilbetrag erlaubt; bar_chf/bar_eur oeffnen die Schublade, kein Bon).
+   * Antwort: die Zahlung und der offene Saldo danach. 400 ungueltige_eingabe, 409 kein_kassentag / vortag_offen.
+   */
+  helferZahlung(daten: HelferZahlungAnfrage): Promise<HelferZahlungAntwort>
+  /** Letzte Helfer-Zahlungen, neueste zuerst, inkl. stornierte */
+  helferZahlungenLetzte(limit?: number): Promise<LetzteHelferZahlung[]>
+  /** Helfer-Zahlung stornieren: ohne PIN nur die zuletzt erfasste, sonst 403 pin_falsch (dann mit PIN wiederholen) */
+  helferZahlungStorno(id: string, pin?: string): Promise<HelferZahlung>
   /** Zustand eines Druckauftrags (Banner verfolgt den eigenen Beleg) */
   druckauftrag(id: string): Promise<Druckauftrag>
   testdruck(): Promise<{ druckauftragId: string }>

@@ -91,7 +91,8 @@ describe('api-Client', () => {
       gegeben: 0,
       spendeBehalten: false,
       bestaetigtHohesRueckgeld: false,
-      rabattProzent: 0
+      rabattProzent: 0,
+      helferName: null
     })
     await expect(versuch).rejects.toBeInstanceOf(ApiFehler)
     try {
@@ -134,7 +135,7 @@ describe('api-Client', () => {
     const api = erstelleApi(haengend, '', { standard: 20, status: 10, lang: 30 })
     const start = Date.now()
     try {
-      await api.verkauf({ id: 'u1', positionen: [], zahlart: 'bar_chf', gegeben: 0, spendeBehalten: false, bestaetigtHohesRueckgeld: false, rabattProzent: 0 })
+      await api.verkauf({ id: 'u1', positionen: [], zahlart: 'bar_chf', gegeben: 0, spendeBehalten: false, bestaetigtHohesRueckgeld: false, rabattProzent: 0, helferName: null })
       expect.unreachable('haette abbrechen muessen')
     } catch (e) {
       expect(e).toBeInstanceOf(NetzFehler)
@@ -295,6 +296,119 @@ describe('api-Client', () => {
     expect(aufrufe[0]?.init.method).toBe('GET')
     await api.spendenLetzte()
     expect(aufrufe[1]?.url).toBe('/api/spende/letzte?limit=20')
+  })
+
+  it('verkauf(): sendet helferName im Body; die Antwort darf offenRappen (Saldo des Helfers) tragen', async () => {
+    const aufrufe: Aufruf[] = []
+    const antwort = {
+      verkauf: { id: 'u1', zahlart: 'helfer', totalRappen: 1250, helferName: 'Anna' },
+      zahlung: { gegeben: 0 },
+      positionen: [],
+      sofortAusgeben: [],
+      druckauftragId: 'd1',
+      bereitsVorhanden: false,
+      offenRappen: 2500
+    }
+    const api = erstelleApi(fakeFetch(201, antwort, aufrufe), '')
+    const a = await api.verkauf({
+      id: 'u1',
+      positionen: [{ produktId: 'p1', anzahl: 1 }],
+      zahlart: 'helfer',
+      gegeben: 0,
+      rabattProzent: 0,
+      helferName: 'Anna',
+      spendeBehalten: false,
+      bestaetigtHohesRueckgeld: false
+    })
+    expect(a.offenRappen).toBe(2500)
+    expect(a.verkauf.helferName).toBe('Anna')
+    expect(aufrufe[0]?.url).toBe('/api/verkauf')
+    expect(JSON.parse(aufrufe[0]?.init.body as string)).toMatchObject({ zahlart: 'helfer', helferName: 'Anna', gegeben: 0 })
+  })
+
+  it('helfer(): GET /api/helfer liefert Namen und Salden, ohne PIN', async () => {
+    const aufrufe: Aufruf[] = []
+    const antwort = {
+      helfer: [{ id: 'h1', name: 'Anna', erstelltAm: '2026-09-19T12:00:00' }],
+      salden: [{ name: 'Anna', offenRappen: 1250, verkaeufeAnzahl: 1, letzteZeit: '2026-09-19T14:32:05' }]
+    }
+    const api = erstelleApi(fakeFetch(200, antwort, aufrufe), '')
+    const h = await api.helfer()
+    expect(h.helfer[0]?.name).toBe('Anna')
+    expect(h.salden[0]?.offenRappen).toBe(1250)
+    expect(aufrufe[0]?.url).toBe('/api/helfer')
+    expect(aufrufe[0]?.init.method).toBe('GET')
+    expect(aufrufe[0]?.init.body).toBeUndefined()
+    expect((aufrufe[0]?.init.headers as Record<string, string>)[PIN_HEADER]).toBeUndefined()
+  })
+
+  it('helferAnlegen(): POST /api/helfer mit { name }', async () => {
+    const aufrufe: Aufruf[] = []
+    const api = erstelleApi(fakeFetch(201, { id: 'h2', name: 'Beat', erstelltAm: '2026-09-19T12:00:00' }, aufrufe), '')
+    const h = await api.helferAnlegen('Beat')
+    expect(h.name).toBe('Beat')
+    expect(aufrufe[0]?.url).toBe('/api/helfer')
+    expect(aufrufe[0]?.init.method).toBe('POST')
+    expect(aufrufe[0]?.init.body).toBe(JSON.stringify({ name: 'Beat' }))
+    expect((aufrufe[0]?.init.headers as Record<string, string>)['Content-Type']).toBe('application/json')
+  })
+
+  it('helferZahlung(): POST /api/helfer/zahlung mit der Anfrage als Body, liefert Zahlung und saldoNachher', async () => {
+    const aufrufe: Aufruf[] = []
+    const zahlung = { id: 'z1', kassentagId: 'k1', helferName: 'Anna', zeit: '2026-09-19T18:00:00', typ: 'bar_chf', betrag: 1000, kursX10000: null, betragChfRappen: 1000, storniertAm: null }
+    const saldoNachher = { name: 'Anna', offenRappen: 250, verkaeufeAnzahl: 1, letzteZeit: '2026-09-19T18:00:00' }
+    const api = erstelleApi(fakeFetch(201, { zahlung, saldoNachher, druckauftragId: 'd9', bereitsVorhanden: false }, aufrufe), '')
+    const a = await api.helferZahlung({ id: 'z1', helferName: 'Anna', typ: 'bar_chf', betrag: 1000 })
+    expect(a.zahlung.betragChfRappen).toBe(1000)
+    expect(a.saldoNachher.offenRappen).toBe(250)
+    expect(a.druckauftragId).toBe('d9')
+    expect(aufrufe[0]?.url).toBe('/api/helfer/zahlung')
+    expect(aufrufe[0]?.init.method).toBe('POST')
+    expect(aufrufe[0]?.init.body).toBe(JSON.stringify({ id: 'z1', helferName: 'Anna', typ: 'bar_chf', betrag: 1000 }))
+    expect((aufrufe[0]?.init.headers as Record<string, string>)[PIN_HEADER]).toBeUndefined()
+
+    const abgelehnt = erstelleApi(fakeFetch(409, { fehler: 'kein_kassentag', meldung: 'Kein Kassentag geöffnet.' }, []), '')
+    try {
+      await abgelehnt.helferZahlung({ id: 'z2', helferName: 'Anna', typ: 'twint', betrag: 500 })
+      expect.unreachable()
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApiFehler)
+      expect((e as ApiFehler).fehler).toBe('kein_kassentag')
+    }
+  })
+
+  it('helferZahlungenLetzte(): GET /api/helfer/zahlungen/letzte?limit=n, Standard 20', async () => {
+    const aufrufe: Aufruf[] = []
+    const api = erstelleApi(fakeFetch(200, [{ id: 'z1', helferName: 'Anna', typ: 'bar_chf', betrag: 1000, storniertAm: null }], aufrufe), '')
+    const liste = await api.helferZahlungenLetzte(5)
+    expect(liste[0]?.helferName).toBe('Anna')
+    expect(aufrufe[0]?.url).toBe('/api/helfer/zahlungen/letzte?limit=5')
+    expect(aufrufe[0]?.init.method).toBe('GET')
+    await api.helferZahlungenLetzte()
+    expect(aufrufe[1]?.url).toBe('/api/helfer/zahlungen/letzte?limit=20')
+  })
+
+  it('helferZahlungStorno(): ohne PIN kein X-Pin-Header, mit PIN Header gesetzt; 403 pin_falsch als ApiFehler', async () => {
+    const aufrufe: Aufruf[] = []
+    const api = erstelleApi(fakeFetch(200, { id: 'z 1', storniertAm: '2026-09-19T18:40:00' }, aufrufe), '')
+    const ohne = await api.helferZahlungStorno('z 1')
+    expect(ohne.storniertAm).toBe('2026-09-19T18:40:00')
+    expect(aufrufe[0]?.url).toBe('/api/helfer/zahlung/z%201/storno')
+    expect(aufrufe[0]?.init.method).toBe('POST')
+    expect((aufrufe[0]?.init.headers as Record<string, string>)[PIN_HEADER]).toBeUndefined()
+
+    await api.helferZahlungStorno('z1', '1234')
+    expect((aufrufe[1]?.init.headers as Record<string, string>)[PIN_HEADER]).toBe('1234')
+
+    const verweigert = erstelleApi(fakeFetch(403, { fehler: 'pin_falsch', meldung: 'PIN falsch' }, []), '')
+    try {
+      await verweigert.helferZahlungStorno('z2')
+      expect.unreachable()
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApiFehler)
+      expect((e as ApiFehler).status).toBe(403)
+      expect((e as ApiFehler).fehler).toBe('pin_falsch')
+    }
   })
 
   it('spendeStorno(): ohne PIN kein X-Pin-Header, mit PIN Header gesetzt; 403 pin_falsch als ApiFehler', async () => {

@@ -78,10 +78,21 @@ export function abschlussHtml(b: AbschlussBericht): string {
       label: `Storni (${String(b.storniAnzahl)})`,
       wert: formatAbzug(b.storniAuszahlungRappen)
     },
+    // Helferessen: Betrag aller Helfer-Verkäufe des Tages; «sofort» steckt schon in Bar/Twint, «später» ist Schuld.
     {
-      label: `Helferessen ${String(b.helferessenStueck)} Stk (entgangen)`,
-      wert: formatChf(b.helferessenEntgangenRappen)
+      label: `Helferessen (${String(b.helferessenStueck)} Stück)`,
+      wert: formatChf(b.helferessenBetragRappen)
     },
+    { label: '   davon sofort bezahlt', wert: formatChf(b.helferSofortRappen) },
+    { label: '   davon später zahlen (heute offen)', wert: formatChf(b.helferSpaeterRappen) },
+    // Helfer-Zahlungen (heute erhalten): Bar CHF/EUR liegen in der Lade und stecken im Soll, Twint nicht.
+    { label: 'Helfer-Zahlungen Bar CHF', wert: formatChf(b.helferZahlungenBarChfRappen) },
+    {
+      label: 'Helfer-Zahlungen Bar EUR (CHF-Gegenwert)',
+      wert: formatChf(b.helferZahlungenEurChfRappen)
+    },
+    { label: '   davon Stück EUR', wert: `EUR ${formatEur(b.helferZahlungenEurCent)}` },
+    { label: 'Helfer-Zahlungen Twint', wert: formatChf(b.helferZahlungenTwintRappen) },
     // Umsatz je Produkt bleibt brutto zu vollen Preisen; diese Zeile erklaert die Differenz zu den Einnahmen.
     { label: `Rabatte (${String(b.rabatteAnzahl)})`, wert: formatChf(b.rabatteRappen) },
     { label: 'Nachdrucke', wert: String(b.nachdrucke) }
@@ -115,6 +126,16 @@ export function abschlussHtml(b: AbschlussBericht): string {
       )
     })
     .join('\n')
+
+  // Offene Helfer-Schulden über ALLE Kassentage (nicht nur heute): Gesamtsumme, dann je Helfer eine Zeile.
+  const helferZeilen =
+    b.helferOffen.length === 0
+      ? '<tr><td>keine</td><td class="zahl"></td></tr>'
+      : b.helferOffen
+          .map(
+            (h) => `<tr><td>${html(h.name)}</td><td class="zahl">${formatChf(h.offenRappen)}</td></tr>`
+          )
+          .join('\n')
 
   const erstellt =
     b.erstelltAm !== ''
@@ -182,6 +203,15 @@ ${zeileHtml({ label: 'Belege (ohne stornierte)', wert: String(b.anzahlBelege) })
 <tbody>
 ${produktZeilen}
 <tr class="fett"><td>Umsatz Produkte CHF</td><td></td><td></td><td class="zahl">${formatChf(umsatzTotal)}</td></tr>
+</tbody>
+</table>
+
+<p class="abschnitt">Offene Helfer-Schulden gesamt</p>
+<table>
+<thead><tr><th>Name</th><th class="zahl">Offen CHF</th></tr></thead>
+<tbody>
+${helferZeilen}
+<tr class="fett"><td>Gesamt CHF</td><td class="zahl">${formatChf(b.helferOffenGesamtRappen)}</td></tr>
 </tbody>
 </table>
 </div>

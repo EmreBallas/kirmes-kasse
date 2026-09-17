@@ -3,27 +3,41 @@
  * Tastatur (Ziffern, Punkt/Komma, Backspace, Enter, Esc), Live-Vorschau mit berechneZahlung.
  * Verkaufs-UUID wird beim Oeffnen erzeugt und bei "Nochmals senden" wiederverwendet (Fachregel 17).
  *
- * Rabatt: `rabattProzent` ist der fuer diesen Beleg wirksame Satz (0 = keiner, bei Helfer immer 0).
- * "Total CHF" ist der bereits rabattierte, zu kassierende Betrag; im Kopf steht dann die kleine Zeile
- * "inkl. 50% Rabatt (- CHF 13.50)". Gerechnet wird mit @core, nie im Dialog selbst.
+ * Rabatt: `rabattProzent` ist der fuer diesen Beleg wirksame Satz (0 = keiner). "Total CHF" ist der bereits
+ * rabattierte, zu kassierende Betrag; im Kopf steht dann die kleine Zeile "inkl. 50% Rabatt (- CHF 13.50)".
+ * Gerechnet wird mit @core, nie im Dialog selbst.
+ *
+ * Helfer «gleich zahlen»: `helferName` steht im Kopf («Helfer: Anna») und geht mit der Verkaufsanfrage mit;
+ * sonst ist der Dialog ein normaler Verkauf. Zahlart helfer («spaeter zahlen») laeuft ueber den Helferdialog.
  */
 import { useEffect, useMemo, useState, type JSX } from 'react'
-import type { VerkaufAnfrage, VerkaufAntwort, Warenkorb, Zahlart, ZahlungsErgebnis, ZahlungsWarnung } from '@core/types'
+import type { VerkaufAnfrage, VerkaufAntwort, Warenkorb, ZahlungsErgebnis, ZahlungsWarnung } from '@core/types'
 import { formatChf, formatEur, formatKurs } from '@core/geld'
 import { berechneZahlung } from '@core/zahlung'
 import { ApiFehler, NetzFehler, api, fehlerMeldung } from '../api'
 import { tasteAusTastatur, textAusBetrag, tippe, type Taste } from '../betrag'
-import { SCHNELLWAHL, ZAHLART_NAME, baueVerkaufAnfrage, gegebenAusText, neueVerkaufsId, pruefeVorSenden, bestaetigungsWarnung } from '../bezahlen'
+import {
+  SCHNELLWAHL,
+  ZAHLART_NAME,
+  baueVerkaufAnfrage,
+  gegebenAusText,
+  neueVerkaufsId,
+  pruefeVorSenden,
+  bestaetigungsWarnung,
+  type BarOderTwint
+} from '../bezahlen'
 import { rabattKopfText, warenkorbSumme } from '../rabatt'
 import { Popup } from './Popup'
 import { Ziffernblock } from './Ziffernblock'
 
 interface Props {
-  zahlart: Zahlart
+  zahlart: BarOderTwint
   warenkorb: Warenkorb
   kursX10000: number
-  /** wirksamer Rabattsatz dieses Belegs in Prozent; 0 = kein Rabatt (bei Helfer immer 0) */
+  /** wirksamer Rabattsatz dieses Belegs in Prozent; 0 = kein Rabatt */
   rabattProzent: number
+  /** Helfer, der gleich zahlt (Beleg traegt den Namen); null bei gewoehnlichen Verkaeufen */
+  helferName?: string | null
   onErfolg: (antwort: VerkaufAntwort) => void
   onAbbrechen: () => void
 }
@@ -36,7 +50,7 @@ type PopupZustand =
   | { art: 'fehler'; meldung: string }
   | null
 
-export function Bezahldialog({ zahlart, warenkorb, kursX10000, rabattProzent, onErfolg, onAbbrechen }: Props): JSX.Element {
+export function Bezahldialog({ zahlart, warenkorb, kursX10000, rabattProzent, helferName = null, onErfolg, onAbbrechen }: Props): JSX.Element {
   const summe = warenkorbSumme(warenkorb, rabattProzent)
   // Was kassiert wird: der bereits rabattierte Betrag (Zahlung, Rueckgeld und Storno rechnen damit).
   const totalRappen = summe.totalRappen
@@ -107,7 +121,7 @@ export function Bezahldialog({ zahlart, warenkorb, kursX10000, rabattProzent, on
       setPopup({ art: 'fehler', meldung: fehlerMeldung(e) })
       return
     }
-    const anfrage = baueVerkaufAnfrage(verkaufId, warenkorb, zahlart, gegeben, spendeBehalten, false, summe.rabattProzent)
+    const anfrage = baueVerkaufAnfrage(verkaufId, warenkorb, zahlart, gegeben, spendeBehalten, false, summe.rabattProzent, helferName)
     const entscheid = pruefeVorSenden(erg, false)
     if (entscheid === 'nicht_gedeckt') {
       setPopup({ art: 'nicht_gedeckt' })
@@ -165,6 +179,7 @@ export function Bezahldialog({ zahlart, warenkorb, kursX10000, rabattProzent, on
       <div className={`bezahlen bezahlen-${zahlart}`}>
         <div className="bezahlen-kopf">
           <h2>{ZAHLART_NAME[zahlart]}</h2>
+          {helferName !== null ? <span className="bezahlen-helfer">Helfer: {helferName}</span> : null}
           {summe.rabattRappen > 0 ? (
             <span className="bezahlen-rabatt zahl">{rabattKopfText(summe.rabattProzent, summe.rabattRappen)}</span>
           ) : null}
@@ -185,15 +200,13 @@ export function Bezahldialog({ zahlart, warenkorb, kursX10000, rabattProzent, on
                 <span className="bz-wert zahl">{formatEur(ergebnis?.totalEurCent ?? 0)}</span>
               </div>
             ) : null}
-            {zahlart !== 'helfer' ? (
-              <div className={`bz-zeile bz-zeile-gegeben${eingabeErlaubt ? ' bz-zeile-aktiv' : ''}`}>
-                <span className="bz-label">{zahlart === 'twint' ? 'Betrag CHF' : `Gegeben ${waehrungGegeben}`}</span>
-                <span className="bz-wert zahl">
-                  {text === '' ? '0.00' : text}
-                  {eingabeErlaubt ? <span className="cursor" aria-hidden="true">|</span> : null}
-                </span>
-              </div>
-            ) : null}
+            <div className={`bz-zeile bz-zeile-gegeben${eingabeErlaubt ? ' bz-zeile-aktiv' : ''}`}>
+              <span className="bz-label">{zahlart === 'twint' ? 'Betrag CHF' : `Gegeben ${waehrungGegeben}`}</span>
+              <span className="bz-wert zahl">
+                {text === '' ? '0.00' : text}
+                {eingabeErlaubt ? <span className="cursor" aria-hidden="true">|</span> : null}
+              </span>
+            </div>
             {zahlart === 'bar_eur' && gegeben > 0 ? (
               <div className="bz-zeile bz-zeile-klein">
                 <span className="bz-label">Gegenwert CHF</span>
@@ -210,12 +223,6 @@ export function Bezahldialog({ zahlart, warenkorb, kursX10000, rabattProzent, on
               <div className={`bz-zeile bz-zeile-rueckgeld${!gedeckt ? ' bz-nicht-gedeckt' : ''}`}>
                 <span className="bz-label">{gedeckt ? 'Spende CHF' : 'Betrag'}</span>
                 <span className="bz-wert bz-rueckgeld zahl">{gedeckt ? formatChf(spende) : 'nicht gedeckt'}</span>
-              </div>
-            ) : null}
-            {zahlart === 'helfer' ? (
-              <div className="bz-zeile bz-zeile-rueckgeld">
-                <span className="bz-label">Helfer / Gratis</span>
-                <span className="bz-wert bz-rueckgeld zahl">0.00</span>
               </div>
             ) : null}
           </div>
@@ -254,12 +261,6 @@ export function Bezahldialog({ zahlart, warenkorb, kursX10000, rabattProzent, on
                 </button>
               </div>
             ) : null}
-
-            {zahlart === 'helfer' ? (
-              <div className="twint-hinweis">
-                <p>Helferessen: Total 0, keine Zahlung. Coupons werden gedruckt, Stückzahlen zählen als Helferessen.</p>
-              </div>
-            ) : null}
           </div>
         </div>
 
@@ -270,7 +271,7 @@ export function Bezahldialog({ zahlart, warenkorb, kursX10000, rabattProzent, on
             </button>
           ) : null}
           <button type="button" className="knopf knopf-primaer knopf-riesig" onClick={() => bestaetigen()} disabled={sendet}>
-            {sendet ? 'Wird gespeichert …' : zahlart === 'twint' ? 'Bezahlt, geprüft (Enter)' : zahlart === 'helfer' ? 'Bestätigen (Enter)' : 'Bezahlen (Enter)'}
+            {sendet ? 'Wird gespeichert …' : zahlart === 'twint' ? 'Bezahlt, geprüft (Enter)' : 'Bezahlen (Enter)'}
           </button>
         </div>
       </div>

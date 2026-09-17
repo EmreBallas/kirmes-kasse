@@ -18,6 +18,7 @@ import {
   bonModellTest,
   bonModellVerkauf,
   formatDatum,
+  HELFER_NAME_MAX,
   VERANSTALTUNG_MAX_LAENGE,
   type NachdruckArt
 } from '@core/bon'
@@ -28,6 +29,10 @@ import type {
   DruckStatus,
   Einstellungen,
   FehlerAntwort,
+  Helfer,
+  HelferSaldo,
+  HelferZahlung,
+  HelferZahlungAnfrage,
   Kassentag,
   Position,
   Produkt,
@@ -78,6 +83,32 @@ export interface AbschlussNachlauf {
   pdfPfad: string | null
 }
 
+/**
+ * Antwort von POST /api/verkauf: VerkaufAntwort aus @core/types plus Helfer-Felder (Auftrag 17.9.2026).
+ * `helferName` = Name am Beleg (null bei gewöhnlichen Verkäufen), `offenRappen` = bei zahlart helfer das
+ * geschuldete Total («später zahlen»), sonst null.
+ */
+export interface VerkaufAntwortServer extends VerkaufAntwort {
+  helferName: string | null
+  offenRappen: number | null
+}
+
+/** Antwort von GET /api/helfer: alle gespeicherten Namen und die Salden über alle Kassentage (auch Saldo 0). */
+export interface HelferAntwort {
+  helfer: Helfer[]
+  salden: HelferSaldo[]
+}
+
+/** Antwort von POST /api/helfer/zahlung. */
+export interface HelferZahlungAntwort {
+  zahlung: HelferZahlung
+  /** Saldo des Helfers nach dieser Zahlung (über alle Kassentage; negativ bei Überzahlung) */
+  saldoNachher: HelferSaldo
+  /** Schubladen-Auftrag bei bar_chf/bar_eur, sonst null */
+  druckauftragId: string | null
+  bereitsVorhanden: boolean
+}
+
 /** Antwort von GET /api/drucker: installierte Warteschlangen, eingestellter Name und Vorschlag. */
 export interface DruckerListeAntwort {
   drucker: DruckerInfo[]
@@ -86,10 +117,7 @@ export interface DruckerListeAntwort {
   vorschlag: string | null
 }
 
-export type AbschlussNachlaufErgebnis =
-  | void
-  | AbschlussNachlauf
-  | Promise<void | AbschlussNachlauf>
+export type AbschlussNachlaufErgebnis = void | AbschlussNachlauf | Promise<void | AbschlussNachlauf>
 
 export interface AppDeps {
   db: DatabaseSync
@@ -348,6 +376,11 @@ export function erstelleKassenApp(deps: AppDeps): KassenApp {
       storni: repos.storno.desKassentags(kassentag.id),
       // Separat erfasste Spenden des Tages (nicht stornierte): erhöhen Spende-Zeilen und Soll-Bestand
       spenden: repos.spende.fuerKassentag(kassentag.id),
+      // Helfer-Zahlungen des Tages (nicht stornierte): Bar CHF/EUR erhöhen den Soll-Bestand wie Spenden
+      helferZahlungen: repos.helfer.zahlungenFuerKassentag(kassentag.id),
+      // Offene Helfer-Schulden über ALLE Kassentage zum Stand des Berichts (beim Nachdruck: Abschlusszeit,
+      // damit der Nachdruck dieselben Salden zeigt wie der Abschluss); der Core filtert Saldo > 0
+      helferSalden: repos.helfer.salden(erstelltAm),
       nachdrucke: repos.druckauftrag.anzahlNachdrucke(kassentag.id),
       // Name des Anlasses (Einstellung veranstaltung, leer = nichts): Kopfzeile des Abschluss-Bons
       // und Fusszeile der Abschluss-PDF (src/main liest ihn aus dem Bericht).
@@ -364,9 +397,12 @@ export function erstelleKassenApp(deps: AppDeps): KassenApp {
     positionen: Position[],
     druckauftrag: Druckauftrag | null,
     bereitsVorhanden: boolean
-  ): VerkaufAntwort {
+  ): VerkaufAntwortServer {
     return {
       verkauf,
+      helferName: verkauf.helferName,
+      // «später zahlen»: das Total ist die heute entstandene offene Schuld des Helfers
+      offenRappen: verkauf.zahlart === 'helfer' ? verkauf.totalRappen : null,
       zahlung,
       positionen,
       sofortAusgeben: sofortAusgeben(
@@ -582,7 +618,12 @@ export function erstelleKassenApp(deps: AppDeps): KassenApp {
         'Dieser Kassentag ist noch nicht abgeschlossen, es gibt keinen Abschluss-Bon.'
       )
     }
-    const b = bericht(kassentag, kassentag.istChfRappen, kassentag.istEurCent, kassentag.abgeschlossenAm)
+    const b = bericht(
+      kassentag,
+      kassentag.istChfRappen,
+      kassentag.istEurCent,
+      kassentag.abgeschlossenAm
+    )
     const auftrag = druck.reiheEin({
       typ: 'abschluss',
       modell: bonModellAbschluss(b, { nachdruck: true }),
@@ -604,6 +645,18 @@ export function erstelleKassenApp(deps: AppDeps): KassenApp {
     // Beleg-Rabatt: 0 (Standardfall, auch wenn das Feld fehlt) oder genau der eingestellte Satz.
     const rabattProzent =
       ganzzahlFeldOptional(o, 'rabattProzent', { min: 0, max: RABATT_PROZENT_MAX }) ?? 0
+    // Helfername: Pflicht bei «später zahlen» (zahlart helfer), sonst optional («gleich zahlen» mit echter
+    // Zahlart trägt den Namen am Beleg); leer = gewöhnlicher Verkauf.
+    const helferNameRoh = (textOderNullFeld(o, 'helferName') ?? '').trim()
+    if (helferNameRoh.length > HELFER_NAME_MAX) {
+      throw new EingabeFehler(`Helfername darf höchstens ${String(HELFER_NAME_MAX)} Zeichen haben`)
+    }
+    if (zahlart === 'helfer' && helferNameRoh === '') {
+      throw new EingabeFehler(
+        'Bei der Zahlart Helfer muss ein Helfername erfasst werden.',
+        'helfer_name_fehlt'
+      )
+    }
     const spendeBehalten = boolFeld(o, 'spendeBehalten', false)
     const bestaetigtHohesRueckgeld = boolFeld(o, 'bestaetigtHohesRueckgeld', false)
     const rohPositionen = listeFeld(o, 'positionen')
@@ -677,14 +730,11 @@ export function erstelleKassenApp(deps: AppDeps): KassenApp {
       })
       totalRappen += produkt.preisRappen * anzahl
     }
-    // Helfer/Gratis: Total 0, Positionen behalten den Preis-Snapshot (Helferessen im Abschluss, Fachregel 8).
-    // Sonst: Zwischensumme (volle Preise) minus Beleg-Rabatt = kassierter Betrag. Bei Helfer ist der
-    // Rabatt wirkungslos und wird als 0 gespeichert; die Positionen behalten immer den vollen Preis.
+    // Zwischensumme (volle Preise) minus Beleg-Rabatt = kassierter Betrag; die Positionen behalten immer den
+    // vollen Preis. Der Rabatt gilt seit dem 17.9.2026 auch bei zahlart helfer: Helfer zahlen echte Beträge,
+    // das rabattierte Total ist bei «später zahlen» die offene Schuld (kein Geld in der Lade, Fachregel 8 neu).
     const zwischensummeRappen = totalRappen
-    const rabatt =
-      zahlart === 'helfer'
-        ? { total: 0, rabatt: 0 }
-        : rabattBetrag(zwischensummeRappen, rabattProzent)
+    const rabatt = rabattBetrag(zwischensummeRappen, rabattProzent)
     const verkaufTotal = rabatt.total
     const rabattRappen = rabatt.rabatt
     const gespeicherterRabattProzent = rabattRappen === 0 ? 0 : rabattProzent
@@ -717,36 +767,42 @@ export function erstelleKassenApp(deps: AppDeps): KassenApp {
       )
     }
 
-    const erstellt = repos.verkauf.erstelle(
-      {
-        id,
-        kassentagId: kassentag.id,
-        zahlart,
-        totalRappen: verkaufTotal,
-        rabattProzent: gespeicherterRabattProzent,
-        rabattRappen,
-        positionen,
-        zahlung: {
-          waehrung: ergebnis.waehrung,
-          kursX10000: ergebnis.kursX10000,
-          gegeben: ergebnis.gegeben,
-          gegebenChfRappen: ergebnis.gegebenChfRappen,
-          rueckgeldChfRappen: ergebnis.rueckgeldChfRappen,
-          spendeChfRappen: ergebnis.spendeChfRappen,
-          spendeTyp: ergebnis.spendeTyp
+    const erstellt = inTransaktion(deps.db, () => {
+      // Helfername als Stammdatum sichern (gespeicherte Schreibweise gilt für Beleg, Salden und Auswahl)
+      const helferName = helferNameRoh === '' ? null : repos.helfer.stelleSicher(helferNameRoh).name
+      return repos.verkauf.erstelle(
+        {
+          id,
+          kassentagId: kassentag.id,
+          zahlart,
+          totalRappen: verkaufTotal,
+          rabattProzent: gespeicherterRabattProzent,
+          rabattRappen,
+          helferName,
+          positionen,
+          zahlung: {
+            waehrung: ergebnis.waehrung,
+            kursX10000: ergebnis.kursX10000,
+            gegeben: ergebnis.gegeben,
+            gegebenChfRappen: ergebnis.gegebenChfRappen,
+            rueckgeldChfRappen: ergebnis.rueckgeldChfRappen,
+            spendeChfRappen: ergebnis.spendeChfRappen,
+            spendeTyp: ergebnis.spendeTyp
+          }
+        },
+        (verkauf, pos, zahlung) => {
+          // Bon 1 und Coupons; die Schublade öffnet nur bei bar_chf/bar_eur (bonModellVerkauf), bei helfer nie
+          const auftrag = druck.reiheEin({
+            typ: 'beleg',
+            modell: bonModellVerkauf(verkauf, pos, zahlung, { nachdruck: null }),
+            verkaufId: verkauf.id,
+            kassentagId: verkauf.kassentagId
+          })
+          repos.warenkorb.leeren()
+          return auftrag
         }
-      },
-      (verkauf, pos, zahlung) => {
-        const auftrag = druck.reiheEin({
-          typ: 'beleg',
-          modell: bonModellVerkauf(verkauf, pos, zahlung, { nachdruck: null }),
-          verkaufId: verkauf.id,
-          kassentagId: verkauf.kassentagId
-        })
-        repos.warenkorb.leeren()
-        return auftrag
-      }
-    )
+      )
+    })
     if (!erstellt.bereitsVorhanden) druckAnstossen()
     return c.json(
       verkaufAntwort(
@@ -958,6 +1014,131 @@ export function erstelleKassenApp(deps: AppDeps): KassenApp {
       return fehler(c, 409, 'bereits_storniert', 'Diese Spende ist bereits storniert.')
     const storniert: Spende = ergebnis.spende
     return c.json({ ...storniert, mitPin: mitPinGebucht })
+  })
+
+  // ---------------------------------------------------------------- Helfer (Essen holen, sofort oder später zahlen)
+
+  // Gespeicherte Namen zur Auswahl im Bezahldialog und die Salden über alle Kassentage (auch Saldo 0)
+  app.get('/api/helfer', (c) => {
+    const antwort: HelferAntwort = { helfer: repos.helfer.alle(), salden: repos.helfer.salden() }
+    return c.json(antwort)
+  })
+
+  // Namen anlegen (201) oder den bestehenden liefern (200, Vergleich ohne Gross-/Kleinschreibung)
+  app.post('/api/helfer', async (c) => {
+    const o = await leseBody(c)
+    const name = textFeld(o, 'name', { max: HELFER_NAME_MAX }).trim()
+    const vorhanden = repos.helfer.finde(name)
+    if (vorhanden !== null) return c.json(vorhanden)
+    return c.json(repos.helfer.stelleSicher(name), 201)
+  })
+
+  /**
+   * Zahlung eines Helfers auf seine offene Schuld: Betrag frei (Teilzahlung erlaubt, Vorschlag im Renderer =
+   * offener Saldo). bar_chf/bar_eur: Geld in die Lade, Schublade öffnet (Druckauftrag typ schublade), kein Bon;
+   * twint: nichts in der Lade. Idempotent über id (Fachregel 17).
+   */
+  app.post('/api/helfer/zahlung', async (c) => {
+    const o = await leseBody(c)
+    const id = textFeld(o, 'id', { max: 64 })
+    const helferNameRoh = textFeld(o, 'helferName', { max: HELFER_NAME_MAX }).trim()
+    const typ = auswahlFeld(o, 'typ', SPENDE_TYPEN)
+    if (!istSpendeTyp(typ)) throw new EingabeFehler('Unbekannter Zahlungstyp')
+    const betrag = ganzzahlFeld(o, 'betrag', { min: 1 })
+
+    const vorhanden = repos.helfer.zahlungFinde(id)
+    if (vorhanden !== null) {
+      const antwort: HelferZahlungAntwort = {
+        zahlung: vorhanden,
+        saldoNachher: repos.helfer.saldo(vorhanden.helferName),
+        druckauftragId: null,
+        bereitsVorhanden: true
+      }
+      return c.json(antwort)
+    }
+
+    const buchung = buchungsKassentag(c)
+    if ('antwort' in buchung) return buchung.antwort
+    const { kassentag } = buchung
+
+    const helfer = repos.helfer.finde(helferNameRoh)
+    if (helfer === null) {
+      throw new EingabeFehler(`Helfer "${helferNameRoh}" ist nicht bekannt.`, 'helfer_unbekannt')
+    }
+    const anfrage: HelferZahlungAnfrage = { id, helferName: helfer.name, typ, betrag }
+    const { erstellt, auftrag } = inTransaktion(deps.db, () => {
+      const e = repos.helfer.zahlungErstelle(
+        anfrage,
+        kassentag.id,
+        repos.einstellung.einstellungen().eurKursX10000
+      )
+      // Bargeld kommt in die Lade: Schublade öffnen, kein Bon (Twint: nichts zu öffnen)
+      const a =
+        typ === 'bar_chf' || typ === 'bar_eur'
+          ? druck.reiheEin({
+              typ: 'schublade',
+              modell: { schublade: true, dokumente: [] },
+              verkaufId: null,
+              kassentagId: kassentag.id
+            })
+          : null
+      return { erstellt: e, auftrag: a }
+    })
+    if (auftrag !== null) druckAnstossen()
+    const antwort: HelferZahlungAntwort = {
+      zahlung: erstellt.zahlung,
+      saldoNachher: repos.helfer.saldo(helfer.name),
+      druckauftragId: auftrag?.id ?? null,
+      bereitsVorhanden: false
+    }
+    return c.json(antwort, 201)
+  })
+
+  // Die neuesten Helfer-Zahlungen (inkl. stornierte), neueste zuerst
+  app.get('/api/helfer/zahlungen/letzte', (c) => {
+    const roh = Number(c.req.query('limit') ?? '20')
+    const limit = Number.isSafeInteger(roh) && roh > 0 ? Math.min(roh, 200) : 20
+    return c.json(repos.helfer.zahlungenLetzte(limit))
+  })
+
+  /**
+   * Storno einer Helfer-Zahlung (Tippfehler): die zuletzt erfasste ohne PIN, ältere nur mit PIN. Nichts wird
+   * gelöscht (storniert_am); die Schuld lebt wieder auf. Nur solange der Kassentag der Zahlung offen ist,
+   * sonst wäre dessen Abschluss falsch (wie bei Spenden).
+   */
+  app.post('/api/helfer/zahlung/:id/storno', (c) => {
+    const zahlung = repos.helfer.zahlungFinde(c.req.param('id'))
+    if (zahlung === null)
+      return fehler(c, 404, 'zahlung_nicht_gefunden', 'Helfer-Zahlung nicht gefunden.')
+    if (zahlung.storniertAm !== null) {
+      return fehler(c, 409, 'bereits_storniert', 'Diese Helfer-Zahlung ist bereits storniert.')
+    }
+    const kassentag = repos.kassentag.finde(zahlung.kassentagId)
+    if (kassentag === null || kassentag.abgeschlossenAm !== null) {
+      return fehler(
+        c,
+        409,
+        'kassentag_abgeschlossen',
+        'Der Kassentag dieser Zahlung ist abgeschlossen, die Zahlung kann nicht mehr storniert werden.'
+      )
+    }
+    let mitPinGebucht = false
+    if (!repos.helfer.istLetzteZahlung(zahlung.id)) {
+      if (!repos.einstellung.pruefePin(c.req.header('X-Pin'))) {
+        return fehler(c, 403, 'pin_falsch', 'Storno älterer Helfer-Zahlungen nur mit PIN.')
+      }
+      mitPinGebucht = true
+    }
+    const ergebnis = repos.helfer.zahlungStorno(zahlung.id, mitPinGebucht)
+    if (ergebnis.ergebnis === 'nicht_gefunden')
+      return fehler(c, 404, 'zahlung_nicht_gefunden', 'Helfer-Zahlung nicht gefunden.')
+    if (ergebnis.ergebnis === 'bereits_storniert')
+      return fehler(c, 409, 'bereits_storniert', 'Diese Helfer-Zahlung ist bereits storniert.')
+    return c.json({
+      ...ergebnis.zahlung,
+      mitPin: mitPinGebucht,
+      saldoNachher: repos.helfer.saldo(ergebnis.zahlung.helferName)
+    })
   })
 
   // ---------------------------------------------------------------- Archiv

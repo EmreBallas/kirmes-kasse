@@ -1,17 +1,29 @@
 /**
  * Kassenabschluss: Bericht-Vorschau, Ist-Zaehlung CHF/EUR, Differenz live, Bemerkung, Abschliessen.
+ *
+ * Helfer (Auftrag 17.9.2026): Zeile «Helferessen (n Stueck)» mit dem Betrag aller Helfer-Verkaeufe des Tages,
+ * darunter «davon sofort bezahlt» (steckt bereits in Bar/Twint) und «davon spaeter zahlen (heute offen)»;
+ * Zeilen «Helfer-Zahlungen Bar CHF / Bar EUR (CHF-Gegenwert) / Twint» (heute erhalten) und der Abschnitt
+ * «Offene Helfer-Schulden gesamt» mit Summe und je Name eine Zeile (ueber alle Kassentage).
  */
 import { useEffect, useState, type JSX } from 'react'
-import type { AbschlussBericht, Kassentag } from '@core/types'
+import type { AbschlussBericht, HelferSaldo, Kassentag } from '@core/types'
 import { formatChf, formatEur, parseBetrag } from '@core/geld'
 import { formatDatum } from '@core/bon'
 import { api, fehlerMeldung } from '../api'
+import { saldenMitSchuld } from '../helfer'
 import { AbschlussPdf } from './AbschlussPdf'
 import { Popup } from './Popup'
 
 /** Zahl aus dem Bericht; fehlt das Feld (aelterer Server), gilt 0. */
 function zahlOderNull(wert: number | undefined): number {
   return typeof wert === 'number' && Number.isFinite(wert) ? wert : 0
+}
+
+/** Offene Helfer-Salden aus dem Bericht; fehlt das Feld (aelterer Server), leere Liste. */
+function helferOffenAus(bericht: AbschlussBericht): HelferSaldo[] {
+  const liste: unknown = bericht.helferOffen
+  return Array.isArray(liste) ? saldenMitSchuld(liste as HelferSaldo[]) : []
 }
 
 /** Abzugszeile: bei 0 ohne Minuszeichen (sonst stuende dort «− 0.00»). */
@@ -229,13 +241,26 @@ export function Abschluss({ kassentag, onFertig, onZurueck }: Props): JSX.Elemen
               <Zeile label="Twint-Spende" wert={formatChf(bericht.twintSpendeRappen)} />
               <Zeile label={`  davon separat erfasst (${String(bericht.spendenSeparatAnzahl)})`} wert={formatChf(bericht.spendenSeparatChfRappen)} />
               <Zeile label={`Storni (${String(bericht.storniAnzahl)})`} wert={formatAbzug(bericht.storniAuszahlungRappen, '− ')} />
-              <Zeile label={`Helferessen (${String(bericht.helferessenStueck)} Stück, entgangen)`} wert={formatChf(bericht.helferessenEntgangenRappen)} />
+              <Zeile label={`Helferessen (${String(zahlOderNull(bericht.helferessenStueck))} Stück)`} wert={formatChf(zahlOderNull(bericht.helferessenBetragRappen))} />
+              <Zeile label="  davon sofort bezahlt (in Bar/Twint enthalten)" wert={formatChf(zahlOderNull(bericht.helferSofortRappen))} />
+              <Zeile label="  davon später zahlen (heute offen)" wert={formatChf(zahlOderNull(bericht.helferSpaeterRappen))} />
+              <Zeile label="Helfer-Zahlungen Bar CHF" wert={formatChf(zahlOderNull(bericht.helferZahlungenBarChfRappen))} />
+              <Zeile label="Helfer-Zahlungen Bar EUR (CHF-Gegenwert)" wert={formatChf(zahlOderNull(bericht.helferZahlungenEurChfRappen))} />
+              <Zeile label="  davon Stück EUR" wert={`EUR ${formatEur(zahlOderNull(bericht.helferZahlungenEurCent))}`} />
+              <Zeile label="Helfer-Zahlungen Twint" wert={formatChf(zahlOderNull(bericht.helferZahlungenTwintRappen))} />
               <Zeile label={`Rabatte (${String(zahlOderNull(bericht.rabatteAnzahl))})`} wert={formatChf(zahlOderNull(bericht.rabatteRappen))} />
               <Zeile label="Nachdrucke" wert={String(bericht.nachdrucke)} />
               <Zeile label="Belege" wert={String(bericht.anzahlBelege)} />
               <Zeile label="Startgeld EUR" wert={`EUR ${formatEur(bericht.startgeldEurCent)}`} />
               <Zeile label="SOLL CHF" wert={formatChf(bericht.sollChfRappen)} klasse="bericht-soll" />
               <Zeile label="SOLL EUR" wert={`EUR ${formatEur(bericht.sollEurCent)}`} klasse="bericht-soll" />
+
+              <h3>Offene Helfer-Schulden gesamt</h3>
+              <Zeile label="Gesamt CHF (alle Kassentage)" wert={formatChf(zahlOderNull(bericht.helferOffenGesamtRappen))} klasse="bericht-soll bericht-helfer-gesamt" />
+              {helferOffenAus(bericht).map((s) => (
+                <Zeile key={s.name} label={`  ${s.name}`} wert={formatChf(s.offenRappen)} />
+              ))}
+              {helferOffenAus(bericht).length === 0 ? <Zeile label="  keine" wert="" /> : null}
 
               <h3>Stück je Produkt</h3>
               <table className="tabelle tabelle-klein">

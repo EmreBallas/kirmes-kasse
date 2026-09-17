@@ -19,6 +19,8 @@ interface Props {
   /** Kasse beenden (PIN); fehlt im normalen Browser (Plan B), dann kein Knopf */
   onBeenden?: () => void
   onLetzte: () => void
+  /** Bildschirm «Helfer»: offene Schulden, Zahlungen erfassen */
+  onHelfer: () => void
   onAbschluss: () => void
   onVerwaltung: () => void
   onEinstellungen: () => void
@@ -95,6 +97,9 @@ export function Kopfzeile(p: Props): JSX.Element {
         <span className="kopf-uhr zahl">{uhrzeitAnzeige(jetzt)}</span>
         <button type="button" className="knopf knopf-neutral" onClick={p.onLetzte}>
           Letzte Verkäufe
+        </button>
+        <button type="button" className="knopf knopf-neutral" onClick={p.onHelfer}>
+          Helfer
         </button>
         <button type="button" className="knopf knopf-neutral" onClick={p.onAbschluss}>
           Abschluss

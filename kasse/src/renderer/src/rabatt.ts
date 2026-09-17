@@ -7,9 +7,10 @@
  *
  * Gerechnet wird ausschliesslich mit @core (`summeMitRabatt` -> `rabattBetrag`), damit Anzeige,
  * Bezahldialog, Server und Bon dieselben Rappen liefern. Dieses Modul entscheidet nur, WELCHER Satz
- * gerade gilt (Einstellung, Umschalter, Zahlart) und liefert die Bildschirmtexte.
+ * gerade gilt (Einstellung, Umschalter) und liefert die Bildschirmtexte. Der Rabatt gilt für alle
+ * Zahlarten, seit 17.9.2026 auch für Helfer (sie zahlen echte Beträge, sofort oder später).
  */
-import type { Einstellungen, Warenkorb, WarenkorbSumme, Zahlart } from '@core/types'
+import type { Einstellungen, Warenkorb, WarenkorbSumme } from '@core/types'
 import {
   RABATT_PROZENT_MAX,
   RABATT_PROZENT_MIN,
@@ -40,13 +41,11 @@ export function rabattSatz(e: Einstellungen | null): number {
 }
 
 /**
- * Satz, der für diesen Beleg wirklich gilt: 0, wenn der Knopf aus ist, der Warenkorb leer ist oder
- * die Zahlart `helfer` gewählt wurde (Helferessen ist gratis, der Rabatt bleibt dort wirkungslos).
- * `zahlart === null` = im Warenkorb, noch keine Zahlart gewählt.
+ * Satz, der für diesen Beleg wirklich gilt: 0, wenn der Knopf aus ist oder der Satz unsinnig ist;
+ * sonst der eingestellte Satz, unabhängig von der Zahlart (auch Helfer «gleich» und «später zahlen»).
  */
-export function wirksamerSatz(aktiv: boolean, satz: number, zahlart: Zahlart | null): number {
+export function wirksamerSatz(aktiv: boolean, satz: number): number {
   if (!aktiv) return 0
-  if (zahlart === 'helfer') return 0
   return istGueltigerSatz(satz) ? satz : 0
 }
 
@@ -74,9 +73,6 @@ export function rabattZeileLabel(satz: number): string {
 export function rabattKopfText(satz: number, rabattRappen: number): string {
   return `inkl. ${String(satz)}% Rabatt (− CHF ${formatChf(rabattRappen)})`
 }
-
-/** Hinweis im Warenkorb, solange der Rabatt aktiv ist (Zahlart Helfer ignoriert ihn). */
-export const RABATT_HELFER_HINWEIS = 'Bei Helfer ohne Wirkung'
 
 /** Entwurf zum Sichern: Warenkorb plus Rabatt-Zustand. */
 export function entwurfMitRabatt(w: Warenkorb, rabattAktiv: boolean): WarenkorbEntwurf {

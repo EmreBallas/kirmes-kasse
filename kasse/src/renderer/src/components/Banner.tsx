@@ -14,11 +14,16 @@
  * "Rueckgeld als Spende": Bei einem Bar-Beleg mit Rueckgeld > 0 bietet das Banner einen Knopf an, weil der
  * Kunde oft erst nach dem Kassieren "passt schon" sagt. Die Spende wird separat erfasst (POST /api/spende,
  * kein Bon); danach zeigt das Banner "Spende CHF 2.00 erfasst" und der Knopf verschwindet.
+ *
+ * Helfer: Bei zahlart helfer («spaeter zahlen») steht statt Rueckgeld «Helfer Anna: CHF 12.50 offen (zahlt
+ * spaeter)», dazu der Gesamtsaldo, falls der Server ihn liefert. Bei «gleich zahlen» (echte Zahlart mit
+ * Helfername) bleibt das Banner wie gewohnt, mit «Helfer: Anna» in der Belegzeile.
  */
 import { useEffect, useRef, useState, type JSX } from 'react'
-import type { Druckauftrag, DruckStatus, Spende, Storno, VerkaufAntwort } from '@core/types'
+import type { Druckauftrag, DruckStatus, Spende, Storno } from '@core/types'
 import { formatChf } from '@core/geld'
 import { api } from '../api'
+import { helferNameVon, helferOffenBannerText, helferSaldoZusatz, type VerkaufAntwortMitSaldo } from '../helfer'
 import { rueckgeldSpendeMoeglich, rueckgeldSpendeText } from '../spende'
 import { RueckgeldSpendeFrage } from './RueckgeldSpende'
 import {
@@ -33,7 +38,7 @@ import {
 } from '../bezahlen'
 
 interface Props {
-  antwort: VerkaufAntwort
+  antwort: VerkaufAntwortMitSaldo
   /** Storno dieses Belegs, falls er nach dem Bezahlen storniert wurde */
   storno?: Storno | null
   druck: DruckStatus | null
@@ -92,6 +97,9 @@ export function Banner({ antwort, storno = null, druck, spende = null, onSchlies
   const zeigeSpende = zahlung.spendeChfRappen > 0
   const spendeErfasst = spende !== null && spende.storniertAm === null
   const spendeKnopf = onSpende !== undefined && rueckgeldSpendeMoeglich(verkauf, zahlung, storniert, spende)
+  const helferName = helferNameVon(verkauf)
+  const spaeterZahlen = verkauf.zahlart === 'helfer'
+  const saldoZusatz = spaeterZahlen ? helferSaldoZusatz(antwort, verkauf.totalRappen) : null
 
   useEffect(() => {
     onDruckProblem?.(druckProblem)
@@ -102,9 +110,13 @@ export function Banner({ antwort, storno = null, druck, spende = null, onSchlies
       <div className="banner banner-storniert" role="status">
         <div className="banner-links">
           <div className="banner-beleg">
-            Beleg <span className="zahl">{verkauf.belegnr}</span> · {ZAHLART_NAME[verkauf.zahlart]} · Storno ({STORNO_GRUND_NAME[storno.grund]})
+            Beleg <span className="zahl">{verkauf.belegnr}</span> · {ZAHLART_NAME[verkauf.zahlart]}
+            {helferName !== null ? ` · Helfer: ${helferName}` : ''} · Storno ({STORNO_GRUND_NAME[storno.grund]})
           </div>
-          <div className="banner-rueckgeld banner-rueckgeld-klein banner-storno-zeile">{stornoBannerText(verkauf.belegnr, storno)}</div>
+          <div className="banner-rueckgeld banner-rueckgeld-klein banner-storno-zeile">
+            {stornoBannerText(verkauf.belegnr, storno)}
+            {spaeterZahlen && helferName !== null ? ` · Schuld von ${helferName} sinkt um CHF ${formatChf(verkauf.totalRappen)}` : ''}
+          </div>
         </div>
         <button type="button" className="knopf knopf-neutral" onClick={onSchliessen} aria-label="Banner schliessen">
           ×
@@ -118,11 +130,17 @@ export function Banner({ antwort, storno = null, druck, spende = null, onSchlies
       <div className="banner-links">
         <div className="banner-beleg">
           Beleg <span className="zahl">{verkauf.belegnr}</span> · {ZAHLART_NAME[verkauf.zahlart]}
+          {helferName !== null && !spaeterZahlen ? ` · Helfer: ${helferName}` : ''}
           {antwort.bereitsVorhanden ? ' · bereits gespeichert' : ''}
         </div>
-        {verkauf.zahlart === 'twint' || verkauf.zahlart === 'helfer' ? (
+        {spaeterZahlen ? (
+          <div className="banner-rueckgeld banner-rueckgeld-klein banner-helfer-offen">
+            {helferOffenBannerText(helferName, verkauf.totalRappen)}
+            {saldoZusatz !== null ? <span className="banner-helfer-saldo"> · {saldoZusatz}</span> : null}
+          </div>
+        ) : verkauf.zahlart === 'twint' ? (
           <div className="banner-rueckgeld banner-rueckgeld-klein">
-            {verkauf.zahlart === 'helfer' ? 'Helfer / Gratis' : 'Twint bezahlt'}
+            Twint bezahlt
             {zeigeSpende ? (
               <span>
                 {' '}

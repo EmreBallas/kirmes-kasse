@@ -35,6 +35,9 @@ export const STORNO_GRUND_NAME = {
 
 export type VorSenden = 'nicht_gedeckt' | 'bestaetigung_noetig' | 'ok'
 
+/** Zahlarten, bei denen im Bezahldialog Geld kassiert wird (Helfer «spaeter zahlen» laeuft ueber den Helferdialog). */
+export type BarOderTwint = Exclude<Zahlart, 'helfer'>
+
 /** Gegebener Betrag aus dem Eingabetext: Rappen (CHF/Twint), Cent (EUR), 0 bei Helfer. */
 export function gegebenAusText(zahlart: Zahlart, text: string): number {
   if (zahlart === 'helfer') return 0
@@ -56,9 +59,10 @@ export function pruefeVorSenden(ergebnis: ZahlungsErgebnis, bestaetigt: boolean)
 }
 
 /**
- * Baut die Verkaufsanfrage. `rabattProzent` ist der für diesen Beleg wirksame Satz (0 = kein Rabatt,
- * bei Zahlart `helfer` immer 0); die Positionen gehen mit voller Menge und vollem Preis an den Server,
- * der Rabatt gilt für den ganzen Beleg.
+ * Baut die Verkaufsanfrage. `rabattProzent` ist der für diesen Beleg wirksame Satz (0 = kein Rabatt;
+ * er gilt für alle Zahlarten, auch für Helfer); die Positionen gehen mit voller Menge und vollem Preis an
+ * den Server, der Rabatt gilt für den ganzen Beleg. `helferName` ist gesetzt, wenn ein Helfer «gleich
+ * zahlt» (der Beleg trägt den Namen), sonst null.
  */
 export function baueVerkaufAnfrage(
   id: string,
@@ -67,7 +71,8 @@ export function baueVerkaufAnfrage(
   gegeben: number,
   spendeBehalten: boolean,
   bestaetigtHohesRueckgeld: boolean,
-  rabattProzent: number
+  rabattProzent: number,
+  helferName: string | null
 ): VerkaufAnfrage {
   return {
     id,
@@ -76,7 +81,8 @@ export function baueVerkaufAnfrage(
     gegeben,
     spendeBehalten,
     bestaetigtHohesRueckgeld,
-    rabattProzent: zahlart === 'helfer' ? 0 : rabattProzent
+    rabattProzent,
+    helferName
   }
 }
 

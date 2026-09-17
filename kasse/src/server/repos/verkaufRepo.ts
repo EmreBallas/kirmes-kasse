@@ -20,10 +20,15 @@ export interface VerkaufNeu {
   zahlart: Zahlart
   /** Bereits rabattierter Betrag: das, was kassiert wird. */
   totalRappen: number
-  /** Gewährter Beleg-Rabatt in Prozent; fehlt oder 0 = kein Rabatt (auch bei zahlart helfer). */
+  /** Gewährter Beleg-Rabatt in Prozent; fehlt oder 0 = kein Rabatt (gilt auch bei zahlart helfer). */
   rabattProzent?: number
   /** Abzug in Rappen = Zwischensumme (volle Preise) − totalRappen; fehlt oder 0 = kein Rabatt. */
   rabattRappen?: number
+  /**
+   * Helfername (Migration 005): Pflicht bei zahlart helfer («später zahlen», totalRappen = Schuld), gesetzt bei
+   * «gleich zahlen» mit echter Zahlart; fehlt oder null = gewöhnlicher Verkauf.
+   */
+  helferName?: string | null
   positionen: PositionNeu[]
   zahlung: ZahlungNeu
 }
@@ -68,7 +73,7 @@ export interface VerkaufRepo {
 }
 
 const V_SPALTEN =
-  'id, kassentag_id, belegnr, zeit, zahlart, total_rappen, rabatt_prozent, rabatt_rappen, storniert_am, storno_id'
+  'id, kassentag_id, belegnr, zeit, zahlart, total_rappen, rabatt_prozent, rabatt_rappen, helfer_name, storniert_am, storno_id'
 const P_SPALTEN =
   'id, verkauf_id, produkt_id, name_snapshot, preis_snapshot_rappen, anzahl, gruppe_snapshot'
 const Z_SPALTEN =
@@ -79,6 +84,13 @@ const ZAHLARTEN: readonly string[] = ['bar_chf', 'bar_eur', 'twint', 'helfer']
 
 export function istZahlart(z: unknown): z is Zahlart {
   return typeof z === 'string' && ZAHLARTEN.includes(z)
+}
+
+/** Getrimmter Helfername oder null (leer/fehlend = gewöhnlicher Verkauf). */
+function helferNameNormalisiert(name: string | null | undefined): string | null {
+  if (name === undefined || name === null) return null
+  const bereinigt = name.trim()
+  return bereinigt === '' ? null : bereinigt
 }
 
 export function zuVerkauf(z: Zeile): Verkauf {
@@ -93,6 +105,7 @@ export function zuVerkauf(z: Zeile): Verkauf {
     totalRappen: zahl(z, 'total_rappen'),
     rabattProzent: zahl(z, 'rabatt_prozent'),
     rabattRappen: zahl(z, 'rabatt_rappen'),
+    helferName: textOderNull(z, 'helfer_name'),
     storniertAm: textOderNull(z, 'storniert_am'),
     stornoId: textOderNull(z, 'storno_id')
   }
@@ -193,8 +206,8 @@ export function erstelleVerkaufRepo(
         const belegnr = einstellungRepo.naechsteBelegnummer()
         const zeit = isoLokal(k.uhr())
         db.prepare(
-          'INSERT INTO verkauf (id, kassentag_id, belegnr, zeit, zahlart, total_rappen, rabatt_prozent, rabatt_rappen, storniert_am, storno_id) ' +
-            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)'
+          'INSERT INTO verkauf (id, kassentag_id, belegnr, zeit, zahlart, total_rappen, rabatt_prozent, rabatt_rappen, helfer_name, storniert_am, storno_id) ' +
+            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)'
         ).run(
           neu.id,
           neu.kassentagId,
@@ -203,7 +216,8 @@ export function erstelleVerkaufRepo(
           neu.zahlart,
           neu.totalRappen,
           neu.rabattProzent ?? 0,
-          neu.rabattRappen ?? 0
+          neu.rabattRappen ?? 0,
+          helferNameNormalisiert(neu.helferName)
         )
 
         const einfuegen = db.prepare(

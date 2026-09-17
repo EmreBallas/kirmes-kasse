@@ -6,13 +6,17 @@
  * Spende" (gleiche Rueckfrage wie im Banner). Darunter der Abschnitt "Letzte Spenden" (Zeit, Typ, Betrag,
  * Beleg, storniert) mit Storno: die zuletzt erfasste ohne PIN, aeltere mit PIN (403 pin_falsch -> PIN-Dialog).
  * Nichts wird geloescht (storniertAm).
+ *
+ * Helfer: Belege mit Helfername zeigen «Helfer: <Name>» unter der Zahlart; bei zahlart helfer («spaeter
+ * zahlen») steht «offen» statt einer Zahlart. Storno eines solchen Belegs zahlt nichts aus, die Schuld sinkt.
  */
 import { useCallback, useEffect, useState, type JSX } from 'react'
 import type { NachdruckAnfrage, Spende, Storno, StornoGrund } from '@core/types'
 import { formatChf } from '@core/geld'
 import { formatUhrzeit } from '@core/bon'
 import { ApiFehler, api, fehlerMeldung, type LetzteSpende, type LetzterVerkauf } from '../api'
-import { STORNO_GRUND_NAME, ZAHLART_NAME } from '../bezahlen'
+import { STORNO_GRUND_NAME } from '../bezahlen'
+import { helferNameVon, verkaufZahlartText } from '../helfer'
 import { SPENDE_TYP_NAME, indexOhnePin, rueckgeldSpendeMoeglich, spendeBetragText } from '../spende'
 import { PinDialog } from './PinDialog'
 import { Popup } from './Popup'
@@ -79,8 +83,13 @@ export function LetzteVerkaeufe({ onZurueck, onStorniert, onSpendeGeaendert }: P
     setDialog(null)
     try {
       const storno = await api.storno(eintrag.verkauf.id, grund, pin)
+      const helferName = helferNameVon(eintrag.verkauf)
+      const schuldText =
+        eintrag.verkauf.zahlart === 'helfer' && helferName !== null
+          ? ` Keine Auszahlung, die offene Schuld von ${helferName} sinkt um CHF ${formatChf(eintrag.verkauf.totalRappen)}.`
+          : ''
       setMeldung({
-        text: `Beleg ${eintrag.verkauf.belegnr} storniert (${STORNO_GRUND_NAME[grund]}). Auszahlung CHF ${formatChf(storno.auszahlungChfRappen)}${storno.auszahlungChfRappen > 0 ? ' – Schublade öffnet' : ''}.`,
+        text: `Beleg ${eintrag.verkauf.belegnr} storniert (${STORNO_GRUND_NAME[grund]}). Auszahlung CHF ${formatChf(storno.auszahlungChfRappen)}${storno.auszahlungChfRappen > 0 ? ' – Schublade öffnet' : ''}.${schuldText}`,
         art: 'ok'
       })
       onStorniert?.(storno)
@@ -167,11 +176,15 @@ export function LetzteVerkaeufe({ onZurueck, onStorniert, onSpendeGeaendert }: P
               const istLetzter = i === 0
               const spende = e.spende ?? null
               const spendeErfasst = spende !== null && spende.storniertAm === null
+              const helferName = helferNameVon(e.verkauf)
               return (
                 <tr key={e.verkauf.id} className={storniert ? 'zeile-storniert' : ''}>
                   <td className="zahl">{e.verkauf.belegnr}</td>
                   <td className="zahl">{formatUhrzeit(e.verkauf.zeit)}</td>
-                  <td>{ZAHLART_NAME[e.verkauf.zahlart]}</td>
+                  <td>
+                    {e.verkauf.zahlart === 'helfer' ? <span className="marke marke-offen">{verkaufZahlartText(e.verkauf)}</span> : verkaufZahlartText(e.verkauf)}
+                    {helferName !== null || e.verkauf.zahlart === 'helfer' ? <div className="helfer-marke">Helfer: {helferName ?? '(ohne Name)'}</div> : null}
+                  </td>
                   <td className="rechts zahl">{formatChf(e.verkauf.totalRappen)}</td>
                   <td className="positionen">{e.positionen.map((p) => `${String(p.anzahl)}x ${p.nameSnapshot}`).join(', ')}</td>
                   <td>
@@ -279,9 +292,16 @@ export function LetzteVerkaeufe({ onZurueck, onStorniert, onSpendeGeaendert }: P
           art="frage"
           knoepfe={[{ text: 'Abbrechen', art: 'neutral', onClick: () => setDialog(null) }]}
         >
-          <p>
-            Ganzer Beleg, Auszahlung bar CHF <span className="zahl">{formatChf(dialog.eintrag.verkauf.zahlart === 'helfer' ? 0 : dialog.eintrag.verkauf.totalRappen)}</span> (Spende wird nicht erstattet).
-          </p>
+          {dialog.eintrag.verkauf.zahlart === 'helfer' ? (
+            <p>
+              Ganzer Beleg, keine Auszahlung (offener Helfer-Beleg). Die Schuld von {helferNameVon(dialog.eintrag.verkauf) ?? 'diesem Helfer'} sinkt um CHF{' '}
+              <span className="zahl">{formatChf(dialog.eintrag.verkauf.totalRappen)}</span>.
+            </p>
+          ) : (
+            <p>
+              Ganzer Beleg, Auszahlung bar CHF <span className="zahl">{formatChf(dialog.eintrag.verkauf.totalRappen)}</span> (Spende wird nicht erstattet).
+            </p>
+          )}
           <div className="knopfgruppe knopfgruppe-senkrecht">
             {GRUENDE.map((g) => (
               <button

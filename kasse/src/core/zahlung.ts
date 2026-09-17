@@ -3,6 +3,7 @@
  * Reine Funktion: keine Seiteneffekte, alle Beträge ganze Rappen/Cent.
  * Ein Beleg-Rabatt braucht hier nichts: `totalRappen` ist bereits der rabattierte, zu kassierende Betrag
  * (der Server rechnet ihn mit `rabattBetrag` aus), darum stimmen Deckung, Rückgeld und Spende unverändert.
+ * Zahlart `helfer` («später zahlen»): keine Zahlung, das Total ist die entstehende Helfer-Schuld.
  */
 import { chfZuEurCentAufgerundet, eurZuChfRappen, pruefeGanzzahl, pruefeKurs } from './geld'
 import type { ZahlungsEingabe, ZahlungsErgebnis, ZahlungsWarnung } from './types'
@@ -48,7 +49,13 @@ function berechneBar(e: ZahlungsEingabe, gegebenChfRappen: number): Pick<
 export function berechneZahlung(e: ZahlungsEingabe): ZahlungsErgebnis {
   switch (e.zahlart) {
     case 'helfer':
-      // Regel 8: Total 0, keine Zahlung, immer gedeckt.
+      // Helfer «später zahlen»: keine Zahlung an der Kasse (gegeben 0, Rückgeld 0, Spende 0), immer gedeckt.
+      // e.totalRappen ist der geschuldete Betrag (ggf. rabattiert) und wird nur durchgereicht: der Server
+      // speichert ihn als verkauf.totalRappen, daraus entsteht die offene Helfer-Schuld. Kein Geld in der Lade.
+      pruefeGanzzahl(e.totalRappen, 'Total in Rappen')
+      if (e.totalRappen < 0) {
+        throw new Error(`Total darf nicht negativ sein, erhalten: ${String(e.totalRappen)}`)
+      }
       return {
         gedeckt: true,
         warnungen: [],
