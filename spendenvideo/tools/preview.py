@@ -21,7 +21,8 @@ def grab(path, t):
 tiles = []
 if video:
     segs = {x["id"]: x for x in tl["segments"]}
-    fdir = os.path.join(OUT, f"frames_{lang}_{aspect}"); os.makedirs(fdir, exist_ok=True)
+    fdir = os.path.join(OUT, f"frames_{lang}_{aspect}")
+    import shutil; shutil.rmtree(fdir, ignore_errors=True); os.makedirs(fdir, exist_ok=True)
     for seg in build.SEGMENTS:
         st = segs[seg["id"]]
         times = [st["start"] + build.T_X + 0.3]  # just after the transition (no text yet, picture check)
