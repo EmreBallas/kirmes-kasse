@@ -36,8 +36,12 @@ Hauptfassung: Türkisch. Deutsche Fassung liegt zusätzlich bei.
 ## Bewusst so gelöst
 
 - Keine Zahlen (Kinder, Kosten), weil keine vorliegen.
-- Keine Musik: Tonspur ist ausschließlich die Rezitation der Kinder aus den beiden Clips.
-  Clip 1 läuft nach dem Schnitt leiser als Klangteppich weiter, Clip 2 ist synchron im Bild.
+- Keine Musik. Tonkonzept (nach Prüfrunde, adab-konform):
+  Clip 1 läuft voll, solange der Junge im Bild ist, danach einmal leiser weiter, bis er von selbst
+  endet (keine Schleife, kein Schnitt mitten in der Rezitation). Clip 2 läuft synchron im Bild.
+  Ab dem Hadith läuft Clip 1 ein zweites Mal komplett und ungeschnitten leise mit und endet von
+  selbst auf der Spendenkarte; Abspann nur mit leisem Raumton. Falls der Hoca gar keine Rezitation
+  im Hintergrund möchte: in `tools/build.py` `second_pass=False` setzen und neu rendern.
 - Texte: drei Autorenvarianten, drei Gutachten (Wirkung, Richtigkeit/Religion, Sprache TR+DE), dann Synthese.
 - Prüfrunde am gerenderten Video (Layout, Sprache, Timing, Bild, Zielgruppe) eingearbeitet:
   türkische Großbuchstaben (İ), Textpositionen außerhalb der App-Leisten, längere Lesezeiten,

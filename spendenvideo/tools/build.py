@@ -370,8 +370,8 @@ def make_overlays(lang, aspect):
 
     # --- bismillah (top centre, s01)
     c = Canvas(W, H)
-    c.scrim(0, int(520 * s), alpha=0.5, top=True)
-    c.text_block([dict(text="بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِيمِ", font=F_ARABIC, size=int(74 * s), color=C_GOLD, rtl=True, lh=1.6)], W // 2, int(262 * s), align="center", max_w=maxw)
+    c.scrim(int(200 * s), int(520 * s), alpha=0.5, top=True)
+    c.text_block([dict(text="بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِيمِ", font=F_ARABIC, size=int(74 * s), color=C_GOLD, rtl=True, lh=1.6)], W // 2, int(190 * s), align="center", max_w=maxw)
     out["bismillah"] = c.save(os.path.join(OVL, f"{lang}_{aspect}_bismillah.png"))
 
     for key in ("s01_hook", "s03_tablets", "s04_children", "s05_teachers", "s06_donations", "s07_clipA", "s09_sadaqa", "s09c_hoca"):
@@ -476,24 +476,27 @@ def env_ramp(n, t0, t1, v0, v1, sr=48000):
     t = np.arange(n) / sr
     return np.clip((t - t0) / max(t1 - t0, 1e-6), 0, 1) * (v1 - v0) + v0
 
-def build_audio(aspect, out_wav):
-    """Audio timeline built from the two clips' own recitation:
-    clip B plays at full level while on screen (s01) and then continues as a softer, filtered bed
-    (J-cut) that loops until the end; clip A plays in sync with s07 while the bed ducks."""
+def build_audio(aspect, out_wav, second_pass=True):
+    """Audio timeline (no loops, no crossfading a recitation into itself, no fade-outs mid-recitation):
+    - clip B: clean at full level while on screen (s01), then continues ONCE at -8 dB until the boy
+      finishes by himself (the clip's natural end);
+    - quiet room tone (the clip's own voiceless first 1.3 s, looped) under everything else;
+    - clip A: clean, in sync with s07;
+    - optional second, complete and uncut playback of clip B at -8 dB from the hadith segment on;
+      it ends naturally during the CTA card, the end card runs on room tone only."""
     sr = 48000
     tl = json.load(open(os.path.join(OUT, f"timeline_{aspect}.json")))
     total = tl["total"]
     segs = {s["id"]: s for s in tl["segments"]}
     n = int((total + 0.2) * sr)
     mix = np.zeros((n, 2), np.float32)
-    BED = 0.27
+    SOFT = 0.40                      # -8 dB for the continued / second playback
     segB = next(x for x in SEGMENTS if x["src"].startswith("vB"))
     segA = next(x for x in SEGMENTS if x["src"].startswith("vA"))
     vB = os.path.join(SRC, segB["src"]); vA = os.path.join(SRC, segA["src"])
     b_clean = rms_norm(decode(vB), -20)
-    b_bed = rms_norm(decode(vB, af="highpass=f=100,lowpass=f=7000"), -20)
     a_clean = rms_norm(decode(vA, ss=segA["ss"], t=segA["dur"] + T_X), -20)
-    lb = len(b_clean)
+    lb, la = len(b_clean), len(a_clean)
 
     def place(arr, t0, gain):
         i0 = int(t0 * sr)
@@ -501,38 +504,31 @@ def build_audio(aspect, out_wav):
         g = gain if np.isscalar(gain) else gain[: len(seg), None]
         mix[i0:i0 + len(seg)] += seg * g
 
-    xf = 1.2
-    nxf = int(xf * sr)
-    fade_in = np.sin(np.linspace(0, np.pi / 2, nxf)) ** 2   # equal-power pair with its reverse
-    sB, sA = segs[segB["id"]], segs[segA["id"]]
-    # first pass of clip B: clean while on screen, crossfading into the filtered bed after the cut
-    g_clean = env_ramp(lb, sB["end"] - T_X, sB["end"] + 1.2, 1.0, 0.0)
-    g_bed = env_ramp(lb, sB["end"] - T_X, sB["end"] + 1.2, 0.0, BED)
-    g_bed[-nxf:] *= fade_in[::-1]
-    g_clean[-nxf:] *= fade_in[::-1]
-    place(b_clean, 0.0, g_clean)
-    place(b_bed, 0.0, g_bed)
-    # loop the bed until the end: each pass fades out and the next fades in (a short dip, no overlapping voices)
-    t = lb / sr
-    while t < total:
-        piece = b_bed.copy()
-        piece[:nxf] *= fade_in[:, None]
-        piece[-nxf:] *= fade_in[::-1][:, None]
-        place(piece, t, BED)
-        t += lb / sr
-    # duck the bed under clip A
-    tt = np.arange(n) / sr
-    duck = np.ones(n, np.float32)
-    duck = np.where(tt < sA["start"], env_ramp(n, sA["start"] - 0.7, sA["start"], 1.0, 0.10), duck)
-    duck = np.where((tt >= sA["start"]) & (tt < sA["end"] - T_X), 0.10, duck)
-    duck = np.where(tt >= sA["end"] - T_X, env_ramp(n, sA["end"] - T_X, sA["end"] + 1.0, 0.10, 1.0), duck)
-    mix *= duck[:, None]
-    # clip A in sync with its picture
-    la = len(a_clean)
+    sB, sA, s08 = segs[segB["id"]], segs[segA["id"]], segs["s08"]
+    # room tone: the voiceless head of clip B, looped with short crossfades, very quiet
+    head = b_clean[: int(1.3 * sr)].copy()
+    nh = len(head); nx = int(0.3 * sr)
+    ramp = np.linspace(0, 1, nx)[:, None]
+    head[:nx] *= ramp; head[-nx:] *= ramp[::-1]
+    tone = np.zeros((n + nh, 2), np.float32)
+    pos = 0
+    while pos < n:
+        tone[pos:pos + nh] += head
+        pos += nh - nx
+    tone = tone[:n]
+    tone *= 10 ** (-35 / 20) / (np.sqrt(np.mean(tone ** 2)) + 1e-9)
+    mix += tone
+    # pass 1: full while on screen, then -8 dB, uncut to its natural end
+    g1 = env_ramp(lb, sB["end"] - T_X, sB["end"] + 1.3, 1.0, SOFT)
+    place(b_clean, 0.0, g1)
+    # clip A: clean and in sync; fades in briefly and out across the dissolve to s08
     ga = env_ramp(la, 0, 0.35, 0.0, 1.0) * env_ramp(la, segA["dur"] - 0.2, segA["dur"] + T_X, 1.0, 0.0)
     place(a_clean, sA["start"], ga)
-    # final fade-out together with the fade to black
-    mix *= env_ramp(n, total - 2.8, total - 0.2, 1.0, 0.0)[:, None]
+    # pass 2 (optional): complete and uncut from the hadith segment on; must end before the picture fade
+    if second_pass and s08["start"] + lb / sr < total - END_FADE - 0.5:
+        place(b_clean, s08["start"], SOFT)
+    # fade the (room-tone) tail together with the fade to black
+    mix *= env_ramp(n, total - END_FADE, total - 0.1, 1.0, 0.0)[:, None]
     peak = np.max(np.abs(mix)) + 1e-9
     if peak > 0.89:
         mix *= 0.89 / peak
