@@ -48,7 +48,7 @@ C_GREEN_D = (7, 30, 22)
 SEGMENTS = [
     dict(id="s01", kind="clip", src="vB_boy_tablet_reciting.mov", ss=0.0, dur=9.0,
          slots=[("bismillah", 0.8), ("s01_hook", 2.4)]),
-    dict(id="s02", kind="photo", src="p14_courtyard_class.jpg", dur=7.0,
+    dict(id="s02", kind="photo", src="p14_courtyard_class.jpg", dur=8.5,
          start=dict(fx=0.30, fy=0.50, z=1.0), end=dict(fx=0.74, fy=0.50, z=1.0),
          slots=[("title", 1.0)]),
     dict(id="s03", kind="photo", src="p09_two_tablets.jpg", dur=7.0,
@@ -65,9 +65,9 @@ SEGMENTS = [
     dict(id="s06", kind="photo", src="p12_small_boy_mat.jpg", dur=7.0, enhance=True,
          start=dict(fx=0.50, fy=0.52, z=1.22), end=dict(fx=0.50, fy=0.55, z=1.0),
          slots=[("s06_donations", 0.9)]),
-    dict(id="s07", kind="clip", src="vA_small_boy_reciting.mov", ss=0.6, dur=8.5,
+    dict(id="s07", kind="clip", src="vA_small_boy_reciting.mov", ss=0.6, dur=8.5, eq="eq=saturation=1.12:contrast=1.09",
          slots=[("s07_clipA", 2.0)]),
-    dict(id="s08", kind="photo", src="p07_boy_red_tablet.jpg", dur=8.5,
+    dict(id="s08", kind="photo", src="p07_boy_red_tablet.jpg", dur=10.0,
          start=dict(fx=0.52, fy=0.48, z=1.0), end=dict(fx=0.50, fy=0.46, z=1.08),
          slots=[("hadith", 0.9)]),
     dict(id="s09a", kind="photo", src="p03_two_boys_smiling.jpg", dur=5.0,
@@ -78,10 +78,10 @@ SEGMENTS = [
     dict(id="s09c", kind="photo", src="p15_hoca_with_boy.jpg", dur=6.5, enhance=True,
          start=dict(fx=0.60, fy=0.50, z=1.07), end=dict(fx=0.60, fy=0.50, z=1.0),
          slots=[("s09c_hoca", 0.9)]),
-    dict(id="s10", kind="card", src="p08_boy_blue_tablet.jpg", dur=13.0,
+    dict(id="s10", kind="card", src="p08_boy_blue_tablet.jpg", dur=12.5,
          start=dict(fx=0.5, fy=0.5, z=1.0), end=dict(fx=0.5, fy=0.5, z=1.05),
          slots=[("cta", 0.7)]),
-    dict(id="s11", kind="photo", src="p11_boy_brown_cap.jpg", dur=8.0,
+    dict(id="s11", kind="photo", src="p11_boy_brown_cap.jpg", dur=9.0,
          start=dict(fx=0.40, fy=0.42, z=1.0), end=dict(fx=0.40, fy=0.42, z=1.06),
          slots=[("end", 0.9)]),
 ]
@@ -123,9 +123,9 @@ def prep_image(path, kind, W, H, enhance=False):
     im = ImageOps.exif_transpose(Image.open(path)).convert("RGB")
     if enhance:  # hazy / backlit source: restore contrast and a little colour
         from PIL import ImageEnhance
-        im = ImageOps.autocontrast(im, cutoff=1.2)
-        im = ImageEnhance.Color(im).enhance(1.18)
-        im = ImageEnhance.Contrast(im).enhance(1.08)
+        im = ImageOps.autocontrast(im, cutoff=0.5)
+        im = ImageEnhance.Color(im).enhance(1.10)
+        im = ImageEnhance.Contrast(im).enhance(1.03)
     if kind == "card":
         im = im.filter(ImageFilter.GaussianBlur(28))
         tint = Image.new("RGB", im.size, C_GREEN)
@@ -164,7 +164,7 @@ def render_clip_segment(seg, W, H, out_path):
     src = os.path.join(SRC, seg["src"])
     # portrait phone clip; for a landscape canvas: blurred fill behind the sharp clip
     sharp = ("hqdn3d=1.5:1.5:4:4,scale=%d:-2:flags=lanczos,crop=%d:min(ih\\,%d),"
-             "unsharp=5:5:0.45:5:5:0.0,eq=saturation=1.04:contrast=1.02")
+             "unsharp=5:5:0.45:5:5:0.0," + seg.get("eq", "eq=saturation=1.04:contrast=1.02"))
     if W < H:
         vf = (sharp % (W, W, H)) + f",pad={W}:{H}:(ow-iw)/2:(oh-ih)/2,fps={FPS},setsar=1,format=yuv420p"
     else:
@@ -226,6 +226,12 @@ def load_script(lang):
     txt.update(fixed)
     details = json.load(open(os.path.join(ROOT, "details.json")))
     return txt, details.get(lang, details)
+
+def upper_lang(text, lang):
+    """str.upper() turns Turkish i into I; map i->İ and ı->I first for Turkish."""
+    if lang == "tr":
+        text = text.replace("i", "İ").replace("ı", "I")
+    return text.upper()
 
 def wrap_fit(draw, text, fpath, size, max_w, min_size, **kw):
     """Shrink font until every explicit line fits; if still too wide, word-wrap."""
@@ -358,8 +364,8 @@ def make_overlays(lang, aspect):
 
     # --- bismillah (top centre, s01)
     c = Canvas(W, H)
-    c.scrim(0, int(360 * s), alpha=0.5, top=True)
-    c.text_block([dict(text="بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِيمِ", font=F_ARABIC, size=int(74 * s), color=C_GOLD, rtl=True, lh=1.6)], W // 2, int(118 * s), align="center", max_w=maxw)
+    c.scrim(0, int(520 * s), alpha=0.5, top=True)
+    c.text_block([dict(text="بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِيمِ", font=F_ARABIC, size=int(74 * s), color=C_GOLD, rtl=True, lh=1.6)], W // 2, int(262 * s), align="center", max_w=maxw)
     out["bismillah"] = c.save(os.path.join(OVL, f"{lang}_{aspect}_bismillah.png"))
 
     for key in ("s01_hook", "s03_tablets", "s04_children", "s05_teachers", "s06_donations", "s07_clipA", "s09_sadaqa", "s09c_hoca"):
@@ -371,7 +377,9 @@ def make_overlays(lang, aspect):
             dict(text=txt["s02_title"], font=F_SERIF_B, size=int(96 * s), color=C_TEXT, lh=1.06, after=int(30 * s)),
             dict(text=txt["s02_sub"], font=F_SANS_M, size=int(38 * s), color=C_MUTED)]
     tmp = Canvas(W, H); bottom = tmp.text_block(spec, W // 2, 0, align="center", max_w=maxw, shadow=False)
-    y = int(H * (0.56 if H > W else 0.50)) - bottom // 2
+    y = int(H * (0.72 if H > W else 0.50)) - bottom // 2
+    if H > W:
+        y = min(y, lower_bottom - bottom)
     c.scrim(int(y - 320 * s), int(y + bottom + 320 * s), alpha=0.0)  # no-op placeholder keeps API symmetric
     full = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     full.alpha_composite(Image.new("RGBA", (W, H), (0, 0, 0, 92)))
@@ -403,7 +411,7 @@ def make_overlays(lang, aspect):
     tmp = Canvas(W, H); hb = tmp.text_block(head, W // 2, 0, align="center", max_w=maxw, shadow=False)
     rows = []
     for lab, val in pairs:
-        rows.append(dict(text=lab.upper(), font=F_SANS_SB, size=int(25 * s), color=C_GOLD, tracking=int(4 * s), after=int(5 * s)))
+        rows.append(dict(text=upper_lang(lab, lang), font=F_SANS_SB, size=int(25 * s), color=C_GOLD, tracking=int(4 * s), after=int(5 * s)))
         rows.append(dict(text=val, font=F_SANS_SB if val.startswith("[") is False else F_SANS_M, size=int(41 * s),
                          color=C_TEXT if not val.startswith("[") else C_MUTED, lh=1.12, after=int(24 * s)))
     tmp = Canvas(W, H); rb = tmp.text_block(rows, marg + int(40 * s), 0, max_w=maxw - int(80 * s), shadow=False)
@@ -472,12 +480,12 @@ def build_audio(aspect, out_wav):
     segs = {s["id"]: s for s in tl["segments"]}
     n = int((total + 0.2) * sr)
     mix = np.zeros((n, 2), np.float32)
-    BED = 0.30
+    BED = 0.27
     segB = next(x for x in SEGMENTS if x["src"].startswith("vB"))
     segA = next(x for x in SEGMENTS if x["src"].startswith("vA"))
     vB = os.path.join(SRC, segB["src"]); vA = os.path.join(SRC, segA["src"])
     b_clean = rms_norm(decode(vB), -20)
-    b_bed = rms_norm(decode(vB, af="highpass=f=140,lowpass=f=5200"), -20)
+    b_bed = rms_norm(decode(vB, af="highpass=f=100,lowpass=f=7000"), -20)
     a_clean = rms_norm(decode(vA, ss=segA["ss"], t=segA["dur"] + T_X), -20)
     lb = len(b_clean)
 
@@ -487,7 +495,7 @@ def build_audio(aspect, out_wav):
         g = gain if np.isscalar(gain) else gain[: len(seg), None]
         mix[i0:i0 + len(seg)] += seg * g
 
-    xf = 1.5
+    xf = 3.0
     nxf = int(xf * sr)
     fade_in = np.sin(np.linspace(0, np.pi / 2, nxf)) ** 2   # equal-power pair with its reverse
     sB, sA = segs[segB["id"]], segs[segA["id"]]
