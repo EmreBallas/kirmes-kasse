@@ -1,0 +1,145 @@
+{
+ "project": "Spendenvideo – Kuran Öğretme Hizmeti (Koranunterricht für Kinder in Afrika)",
+ "purpose": "Short donation appeal video for a mosque community (Turkish-German), to be shared via WhatsApp/Instagram. Goal: donations for Quran teachers (Hodschas/hocalar) in Africa who receive no state support and depend entirely on donations.",
+ "format": "9:16 vertical, 1080x1920, ~70 seconds. Most viewers watch on a phone, often muted → on-screen text carries the message.",
+ "audience_and_voice": {
+  "de": "German, informal 'du' (warm, community tone). Spelling: 'Koran', 'Hodscha/Hodschas', 'Spende'. No exclamation-mark overload.",
+  "tr": "Turkish, polite plural 'siz' (e.g. 'Bağışınızla…'). Correct diacritics (İ ı ğ ş ç ö ü) are mandatory. Spelling: Kur'an, Kur'an-ı Kerim, hoca/hocalar, sadaka-i cariye. Natural, native-level Turkish as used by Turkish communities in Germany."
+ },
+ "allowed_facts": [
+  "The children sit on mats on the ground – in a sandy courtyard against a brick wall, or in a simple room with yellow walls. No desks, no benches.",
+  "They learn and write on wooden tablets (Arabic: lawh; Turkish: levha/tahta) – visible in the photos.",
+  "The video clips show two boys reciting the Quran from memory / from a tablet.",
+  "The teachers (Hodschas / hocalar) receive NO salary or support from the state or anyone else.",
+  "The teachers and their lessons depend entirely on donations.",
+  "Location: Chad (TR: Çad), city of Abéché (TR: Abeşe). The responsible teacher is Cihat Göçer, contact +90 534 234 84 67 (WhatsApp). These may appear in the title subtitle and on the CTA card.",
+  "Hadith (Sahih al-Bukhari 5027): 'The best of you are those who learn the Quran and teach it.' Arabic: خَيْرُكُمْ مَنْ تَعَلَّمَ الْقُرْآنَ وَعَلَّمَهُ – may be quoted with source '(Buhârî)'.",
+  "Concept of sadaqa jariya (ongoing charity) may be referenced in connection with teaching the Quran (knowledge that benefits)."
+ ],
+ "forbidden": [
+  "No invented numbers (number of children, teachers, costs, meals, years).",
+  "No claims about what exactly the money buys (books, food, water, salaries) unless phrased generally, e.g. 'unterstützt die Hodschas und ihren Unterricht'.",
+  "No pity framing ('arme Kinder', 'hungernde Kinder'), no guilt-tripping. Dignity first: the children are shown smiling, proud, learning.",
+  "No emojis. No hashtags.",
+  "Do not change the fixed texts marked fixed=true.",
+  "No names of children. Payment details are not available yet – the CTA shows a placeholder for them."
+ ],
+ "typography_limits": {
+  "big": "max 2 lines, max 24 characters per line (large headline on a phone screen)",
+  "medium": "max 3 lines, max 30 characters per line",
+  "small": "max 2 lines, max 40 characters per line",
+  "note": "Use \\n for a deliberate line break. Writers must count characters; the renderer will NOT wrap gracefully if limits are exceeded."
+ },
+ "slots": [
+  {
+   "id": "s01_hook",
+   "media": "CLIP B (7 s): boy in white cap holding a large wooden tablet covered in handwritten Quran verses, reciting out loud, red-brick wall behind him. Natural sound of his recitation is heard. Arabic Bismillah (fixed) appears at the top.",
+   "text_appears_at": "2.5 s",
+   "size": "medium",
+   "purpose": "Hook. One short, concrete line that makes the viewer keep watching. Should relate to what they see/hear (a child reciting from a wooden tablet)."
+  },
+  {
+   "id": "s02_kicker",
+   "fixed": true,
+   "de": "KURAN ÖĞRETME HİZMETİ",
+   "tr": "KUR'AN ÖĞRETME HİZMETİ",
+   "note": "Small all-caps label above the title. Fixed campaign name (user's wording in DE version kept as the Turkish campaign name)."
+  },
+  {
+   "id": "s02_title",
+   "media": "PHOTO (7 s): slow horizontal pan across a sandy courtyard where ~30 boys and young men in white robes and caps sit on mats along a brick wall, some holding Quran copies/tablets; dozens of sandals in the sand in front of them.",
+   "size": "big",
+   "purpose": "Title of the video. DE e.g. 'Koranunterricht für Kinder in Afrika' (adapt if better), TR equivalent."
+  },
+  {
+   "id": "s02_sub",
+   "media": "same as s02_title",
+   "size": "small",
+   "purpose": "One-line subtitle under the title, e.g. 'Ein Spendenaufruf unserer Gemeinde' – but do NOT assume a mosque name. Keep generic."
+  },
+  {
+   "id": "s03_tablets",
+   "media": "PHOTO (5 s): two teenage boys hold up their wooden tablets – one shows the Arabic alphabet with vowel marks, the other full handwritten verses. Yellow wall behind.",
+   "size": "medium",
+   "purpose": "Observation about how they learn: wooden tablets instead of notebooks. Visible fact, told with respect (not pity)."
+  },
+  {
+   "id": "s04_children",
+   "media": "PHOTO PAIR (4.5 s + 4.5 s): first a row of boys in white shirts looking curiously into the camera; then a small boy in a turquoise shirt and white cap, shyly covering his smile with his hand. Text only over the first photo.",
+   "size": "medium",
+   "purpose": "Line about the children themselves: their eagerness, that they come every day to learn the Quran. No numbers."
+  },
+  {
+   "id": "s05_teachers",
+   "media": "PHOTO (5 s): a smiling boy in a white cap and white robe next to a wooden tablet with Arabic letters; other boys behind him.",
+   "size": "medium",
+   "purpose": "The teachers (Hodschas) receive no salary, nothing from the state."
+  },
+  {
+   "id": "s06_donations",
+   "media": "PHOTO (5 s): a very small boy in a white-blue cap and brown robe sits cross-legged alone on a mat in a sandy courtyard, brick wall behind, a few Quran books beside him.",
+   "size": "medium",
+   "purpose": "They depend entirely on donations – the lessons exist only because people give."
+  },
+  {
+   "id": "s07_clipA",
+   "media": "CLIP A (8 s): a small boy in a white cap and brown robe sits on a mat and recites the Quran from memory, smiling, fiddling with something in his hands. Natural sound of his recitation.",
+   "text_appears_at": "2.0 s",
+   "size": "medium",
+   "purpose": "What the viewer's donation does, phrased generally: it keeps this lesson alive / lets this child keep learning. The emotional peak."
+  },
+  {
+   "id": "s08_hadith_ar",
+   "fixed": true,
+   "de": "خَيْرُكُمْ مَنْ تَعَلَّمَ الْقُرْآنَ وَعَلَّمَهُ",
+   "tr": "خَيْرُكُمْ مَنْ تَعَلَّمَ الْقُرْآنَ وَعَلَّمَهُ",
+   "note": "Arabic hadith text, fixed."
+  },
+  {
+   "id": "s08_hadith",
+   "media": "PHOTO (6 s): a laughing boy in a red shirt holds up his wooden tablet with handwritten verses of Surah al-Fatiha.",
+   "size": "medium",
+   "purpose": "Translation of the hadith (Bukhari 5027). DE: 'Der Beste unter euch ist, wer den Koran lernt und ihn lehrt.' TR: 'Sizin en hayırlınız, Kur'an'ı öğrenen ve öğretendir.' – writers may polish wording but must stay faithful. Put the source in slot s08_source."
+  },
+  {
+   "id": "s08_source",
+   "size": "small",
+   "purpose": "Source line for the hadith, e.g. '— Hadith, Buhârî' (DE) / '— Hadis-i Şerif, Buhârî' (TR)."
+  },
+  {
+   "id": "s09_sadaqa",
+   "media": "PHOTO PAIR (4.5 s + 4.5 s): two close-ups of boys laughing warmly into the camera, friends leaning on each other. Text over the first photo.",
+   "size": "medium",
+   "purpose": "Sadaqa jariya thought: a donation whose reward continues as long as the children recite / teach what they learned."
+  },
+  {
+   "id": "s10_heading",
+   "media": "CTA CARD (10 s): dark-green panel over a blurred photo. Shows heading, then the donation details.",
+   "size": "big",
+   "purpose": "Call to action heading, e.g. 'Jetzt spenden' / 'Şimdi bağış yapın'."
+  },
+  {
+   "id": "s10_labels",
+   "fixed": false,
+   "size": "small",
+   "purpose": "Return the FOUR field labels joined with ' | ' in this order: organisation, IBAN, payment reference, contact. DE e.g. 'Organisation | IBAN | Verwendungszweck | Kontakt', TR e.g. 'Kuruluş | IBAN | Açıklama | İletişim'. Values will be placeholders filled in by the user later."
+  },
+  {
+   "id": "s10_line",
+   "size": "small",
+   "purpose": "One supporting line under the details, e.g. 'Jeder Betrag zählt.' / 'Her miktar değerlidir.'"
+  },
+  {
+   "id": "s11_end",
+   "media": "END (5 s): a small boy in a brown embroidered cap and grey shirt smiles broadly into the camera.",
+   "size": "big",
+   "purpose": "Closing blessing. 'Allah razı olsun' is understood by both audiences – DE version may use it with a German line below (s11_sub)."
+  },
+  {
+   "id": "s11_sub",
+   "size": "small",
+   "purpose": "Closing sub-line: a blessing/thank-you and/or 'share this video' – e.g. DE 'Möge Allah es euch vergelten. Teile dieses Video.' TR 'Paylaşarak da destek olabilirsiniz.'"
+  }
+ ],
+ "primary_language": "Turkish (TR) is the main version; German (DE) is secondary."
+}

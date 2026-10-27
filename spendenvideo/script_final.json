@@ -1,0 +1,85 @@
+{
+ "slots": [
+  {
+   "id": "s01_hook",
+   "de": "Er liest den Koran\nvon einer Holztafel.\nSchau ihm einen Moment zu.",
+   "tr": "Elindeki tahta levhadan\nKur'an okuyor.\nBir an durun, onu izleyin."
+  },
+  {
+   "id": "s02_title",
+   "de": "Koranunterricht\nfür Kinder im Tschad",
+   "tr": "Çad'da Çocuklara\nKur'an Eğitimi"
+  },
+  {
+   "id": "s02_sub",
+   "de": "Abéché · ein Spendenaufruf",
+   "tr": "Abeşe şehri · bir bağış çağrısı"
+  },
+  {
+   "id": "s03_tablets",
+   "de": "Holztafeln statt Hefte.\nDie Verse schreiben sie\nselbst – von Hand.",
+   "tr": "Defter yerine tahta levha.\nAyetleri kendi elleriyle\nyazıyorlar."
+  },
+  {
+   "id": "s04_children",
+   "de": "Sie kommen jeden Tag,\num den Koran zu lernen.\nMit Freude. Mit Hingabe.",
+   "tr": "Her gün geliyorlar,\nKur'an öğrenmek için.\nŞevkle, sevinçle."
+  },
+  {
+   "id": "s05_teachers",
+   "de": "Ihre Hodschas bekommen\nkein Gehalt. Nicht vom Staat,\nvon niemandem.",
+   "tr": "Hocalarına maaş veren yok.\nNe devlet\nne de bir başkası."
+  },
+  {
+   "id": "s06_donations",
+   "de": "Dieser Unterricht lebt\nallein von Spenden.\nVon Menschen wie dir.",
+   "tr": "Bu dersler yalnızca\nsizin gibi insanların\nbağışlarıyla ayakta kalıyor."
+  },
+  {
+   "id": "s07_clipA",
+   "de": "Mit deiner Spende\nkann er weiterlernen.\nVers für Vers.",
+   "tr": "Bağışınızla bu çocuk\nöğrenmeye devam edebilir.\nAyet ayet."
+  },
+  {
+   "id": "s08_hadith",
+   "de": "„Der Beste unter euch ist,\nwer den Koran lernt\nund ihn lehrt.“",
+   "tr": "“Sizin en hayırlınız,\nKur'an'ı öğrenen\nve öğretendir.”"
+  },
+  {
+   "id": "s08_source",
+   "de": "— Hadith, Buhârî (5027)",
+   "tr": "— Hadis-i Şerif, Buhârî (5027)"
+  },
+  {
+   "id": "s09_sadaqa",
+   "de": "Eine Spende, die weiterwirkt:\nSolange sie lesen und lehren,\nwächst dein Lohn.",
+   "tr": "Sadaka-i cariye:\nÇocuklar okuyup öğrettikçe\nsevabınız devam eder."
+  },
+  {
+   "id": "s10_heading",
+   "de": "Jetzt spenden",
+   "tr": "Siz de bu hayra\nortak olun"
+  },
+  {
+   "id": "s10_labels",
+   "de": "Organisation | IBAN | Verwendungszweck | Kontakt",
+   "tr": "Kuruluş | IBAN | Açıklama | İletişim"
+  },
+  {
+   "id": "s10_line",
+   "de": "Klein oder groß – jede Spende zählt.",
+   "tr": "Az ya da çok, her bağış değerlidir."
+  },
+  {
+   "id": "s11_end",
+   "de": "Allah razı olsun",
+   "tr": "Allah razı olsun"
+  },
+  {
+   "id": "s11_sub",
+   "de": "Möge Allah es dir vergelten.\nTeile dieses Video.",
+   "tr": "Allah hayrınızı kabul etsin.\nPaylaşarak da destek olabilirsiniz."
+  }
+ ],
+ "source": "writer panel + judges + synthesis (workflow wf_390d66ce-2b0), location lines adapted after the user confirmed Chad/Abéché"
+}
