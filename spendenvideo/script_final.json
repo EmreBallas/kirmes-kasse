@@ -37,8 +37,8 @@
   },
   {
    "id": "s07_clipA",
-   "de": "Mit deiner Spende\nkann er weiterlernen.\nVers für Vers.",
-   "tr": "Bağışınızla bu çocuk\nöğrenmeye devam edebilir.\nAyet ayet."
+   "de": "Mit deiner Spende\nkönnen sie weiterlernen.\nVers für Vers.",
+   "tr": "Bağışınızla bu çocuklar\nöğrenmeye devam edebilir.\nAyet ayet."
   },
   {
    "id": "s08_hadith",
@@ -53,7 +53,7 @@
   {
    "id": "s09_sadaqa",
    "de": "Eine Spende, die weiterwirkt:\nSolange sie lesen und lehren,\nwächst dein Lohn.",
-   "tr": "Sadaka-i cariye:\nÇocuklar okuyup öğrettikçe\nsevabınız devam eder."
+   "tr": "Sadaka-i cariye:\nÇocuklar okuyup öğrettikçe\nsevabınız inşallah sürer."
   },
   {
    "id": "s10_heading",
@@ -82,8 +82,8 @@
   },
   {
    "id": "s09c_hoca",
-   "de": "Unser Hodscha Cihat Göçer\nvor Ort in Abéché.",
-   "tr": "Hocamız Cihat Göçer,\nAbeşe'de talebeleriyle."
+   "de": "Unser Hodscha Cihat Göçer\nmit einem Schüler in Abéché.",
+   "tr": "Hocamız Cihat Göçer,\nAbeşe'de bir talebesiyle."
   }
  ],
  "source": "writer panel + judges + synthesis (workflow wf_390d66ce-2b0), location lines adapted after the user confirmed Chad/Abéché"

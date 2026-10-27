@@ -55,20 +55,20 @@ SEGMENTS = [
          start=dict(fx=0.36, fy=0.55, z=1.0), end=dict(fx=0.64, fy=0.55, z=1.04),
          slots=[("s03_tablets", 0.9)]),
     dict(id="s04a", kind="photo", src="p04_row_of_boys.jpg", dur=5.0,
-         start=dict(fx=0.30, fy=0.45, z=1.0), end=dict(fx=0.58, fy=0.45, z=1.0),
+         start=dict(fx=0.38, fy=0.45, z=1.0), end=dict(fx=0.60, fy=0.45, z=1.0),
          slots=[("s04_children", 0.9, 2)]),
     dict(id="s04b", kind="photo", src="p01_boy_hand_mouth.jpg", dur=4.0,
          start=dict(fx=0.60, fy=0.52, z=1.0), end=dict(fx=0.62, fy=0.50, z=1.10), slots=[]),
     dict(id="s05", kind="photo", src="p10_boy_white_cap_tablet.jpg", dur=7.0,
-         start=dict(fx=0.42, fy=0.42, z=1.0), end=dict(fx=0.40, fy=0.40, z=1.10),
+         start=dict(fx=0.50, fy=0.42, z=1.0), end=dict(fx=0.55, fy=0.42, z=1.0),
          slots=[("s05_teachers", 0.9)]),
-    dict(id="s06", kind="photo", src="p12_small_boy_mat.jpg", dur=7.0, enhance=True,
+    dict(id="s06", kind="photo", src="p12_small_boy_mat.jpg", dur=7.0, enhance=True, fix_blue_cast=True,
          start=dict(fx=0.50, fy=0.52, z=1.22), end=dict(fx=0.50, fy=0.55, z=1.0),
          slots=[("s06_donations", 0.9)]),
     dict(id="s07", kind="clip", src="vA_small_boy_reciting.mov", ss=0.6, dur=8.5, eq="eq=saturation=1.12:contrast=1.09",
          slots=[("s07_clipA", 2.0)]),
     dict(id="s08", kind="photo", src="p07_boy_red_tablet.jpg", dur=10.0,
-         start=dict(fx=0.52, fy=0.48, z=1.0), end=dict(fx=0.50, fy=0.46, z=1.08),
+         start=dict(fx=0.56, fy=0.47, z=1.0), end=dict(fx=0.54, fy=0.45, z=1.08),
          slots=[("hadith", 0.9)]),
     dict(id="s09a", kind="photo", src="p03_two_boys_smiling.jpg", dur=5.0,
          start=dict(fx=0.42, fy=0.45, z=1.06), end=dict(fx=0.44, fy=0.45, z=1.0),
@@ -92,7 +92,7 @@ def slot_window(k, appear, span=1):
     S0 = tl[k]["start"] + max(appear, T_X)
     last = k + span - 1
     if last >= len(SEGMENTS) - 1:
-        E0 = tl[-1]["end"] - (END_FADE + 0.3)
+        E0 = tl[-1]["end"] - 0.2
     else:
         E0 = tl[last]["end"] - (T_X + 0.25)
     return S0, E0
@@ -119,19 +119,24 @@ def cover_crop(sw, sh, W, H, fx, fy, z):
     y0 = min(max(cy - ch / 2, 0), sh - ch)
     return (x0, y0, x0 + cw, y0 + ch)
 
-def prep_image(path, kind, W, H, enhance=False):
+def prep_image(path, kind, W, H, enhance=False, fix_blue_cast=False):
     im = ImageOps.exif_transpose(Image.open(path)).convert("RGB")
+    if fix_blue_cast:  # haze-induced cyan cast on skin: desaturate the cyan-blue hue band only
+        hsv = np.array(im.convert("HSV")).astype(np.float32)
+        mask = (hsv[..., 0] > 120) & (hsv[..., 0] < 190)
+        hsv[..., 1][mask] *= 0.45
+        im = Image.fromarray(hsv.astype(np.uint8), "HSV").convert("RGB")
     if enhance:  # hazy / backlit source: restore contrast and a little colour
         from PIL import ImageEnhance
         im = ImageOps.autocontrast(im, cutoff=0.5)
         im = ImageEnhance.Color(im).enhance(1.10)
         im = ImageEnhance.Contrast(im).enhance(1.03)
     if kind == "card":
+        im = ImageOps.autocontrast(im, cutoff=1)
         im = im.filter(ImageFilter.GaussianBlur(28))
         tint = Image.new("RGB", im.size, C_GREEN)
-        im = Image.blend(im, tint, 0.72)
-        im = ImageOps.autocontrast(im, cutoff=1)
-        im = Image.eval(im, lambda v: int(v * 0.62))
+        im = Image.blend(im, tint, 0.78)
+        im = Image.eval(im, lambda v: int(v * 0.6))
     # keep the source roughly 1.0-1.4x the output so LANCZOS always has enough pixels
     sw, sh = im.size
     s = max(W / sw, H / sh) * 1.3
@@ -140,7 +145,7 @@ def prep_image(path, kind, W, H, enhance=False):
     return im
 
 def render_photo_segment(seg, W, H, out_path):
-    im = prep_image(os.path.join(SRC, seg["src"]), seg["kind"], W, H, enhance=seg.get("enhance", False))
+    im = prep_image(os.path.join(SRC, seg["src"]), seg["kind"], W, H, enhance=seg.get("enhance", False), fix_blue_cast=seg.get("fix_blue_cast", False))
     sw, sh = im.size
     n = round(seg["dur"] * FPS)
     a, b = seg["start"], seg["end"]
@@ -224,6 +229,7 @@ def load_script(lang):
     final = json.load(open(os.path.join(ROOT, "script_final.json")))
     txt = {s["id"]: s[lang] for s in final["slots"]}
     txt.update(fixed)
+    txt = {k: (v or "").replace("'", "\u2019") for k, v in txt.items()}
     details = json.load(open(os.path.join(ROOT, "details.json")))
     return txt, details.get(lang, details)
 
@@ -348,7 +354,7 @@ def make_overlays(lang, aspect):
     lower_bottom = int(H - (300 if H > W else 120) * s)   # bottom edge of lower-third text blocks
     maxw = W - 2 * marg
 
-    def medium_block(key, text, extra=None):
+    def medium_block(key, text, extra=None, alpha=0.58):
         c = Canvas(W, H)
         # measure first with a throwaway canvas to find block height
         tmp = Canvas(W, H)
@@ -357,7 +363,7 @@ def make_overlays(lang, aspect):
             spec += extra
         bottom = tmp.text_block(spec, marg, 0, max_w=maxw, shadow=False)
         y = lower_bottom - bottom
-        c.scrim(int(y - 260 * s), H, alpha=0.58)
+        c.scrim(int(y - 260 * s), H, alpha=alpha)
         c.rule(marg, marg + int(64 * s), y - int(28 * s), w=int(5 * s))
         c.text_block(spec, marg, y, max_w=maxw)
         out[key] = c.save(os.path.join(OVL, f"{lang}_{aspect}_{key}.png"))
@@ -369,12 +375,12 @@ def make_overlays(lang, aspect):
     out["bismillah"] = c.save(os.path.join(OVL, f"{lang}_{aspect}_bismillah.png"))
 
     for key in ("s01_hook", "s03_tablets", "s04_children", "s05_teachers", "s06_donations", "s07_clipA", "s09_sadaqa", "s09c_hoca"):
-        medium_block(key, txt[key])
+        medium_block(key, txt[key], alpha=0.68 if key in ("s01_hook", "s07_clipA", "s03_tablets") else 0.58)
 
     # --- title block (s02): kicker + title + sub, centred
     c = Canvas(W, H)
     spec = [dict(text=txt["s02_kicker"], font=F_SANS_SB, size=int(33 * s), color=C_GOLD, tracking=int(8 * s), after=int(26 * s)),
-            dict(text=txt["s02_title"], font=F_SERIF_B, size=int(96 * s), color=C_TEXT, lh=1.06, after=int(30 * s)),
+            dict(text=txt["s02_title"], font=F_SERIF_B, size=int(92 * s), color=C_TEXT, lh=1.06, after=int(30 * s)),
             dict(text=txt["s02_sub"], font=F_SANS_M, size=int(38 * s), color=C_MUTED)]
     tmp = Canvas(W, H); bottom = tmp.text_block(spec, W // 2, 0, align="center", max_w=maxw, shadow=False)
     y = int(H * (0.72 if H > W else 0.50)) - bottom // 2
@@ -389,12 +395,12 @@ def make_overlays(lang, aspect):
 
     # --- hadith block (s08): arabic + translation + source, centred lower
     c = Canvas(W, H)
-    spec = [dict(text=txt["s08_hadith_ar"], font=F_ARABIC, size=int(78 * s), color=C_GOLD, rtl=True, lh=1.5, after=int(22 * s)),
+    spec = [dict(text=txt["s08_hadith_ar"], font=F_ARABIC, size=int(78 * s), color=C_GOLD, rtl=True, lh=1.1, after=int(30 * s)),
             dict(text=txt["s08_hadith"], font=F_SERIF_I, size=int(58 * s), color=C_TEXT, lh=1.16, after=int(22 * s)),
             dict(text=txt["s08_source"], font=F_SANS_M, size=int(34 * s), color=C_MUTED)]
     tmp = Canvas(W, H); bottom = tmp.text_block(spec, W // 2, 0, align="center", max_w=maxw, shadow=False)
     y = lower_bottom - bottom
-    c.scrim(int(y - 320 * s), H, alpha=0.66)
+    c.scrim(int(y - 560 * s), H, alpha=0.72)
     c.text_block(spec, W // 2, y, align="center", max_w=maxw)
     out["hadith"] = c.save(os.path.join(OVL, f"{lang}_{aspect}_hadith.png"))
 
@@ -407,7 +413,7 @@ def make_overlays(lang, aspect):
         while len(labels) < 4:
             labels.append("")
         pairs = list(zip(labels, [details["org"], details["iban"], details["purpose"], details["contact"]]))
-    head = [dict(text=txt["s10_heading"], font=F_SERIF_B, size=int(88 * s), color=C_TEXT, lh=1.05, after=int(18 * s))]
+    head = [dict(text=txt["s10_heading"], font=F_SERIF_B, size=int(92 * s), color=C_TEXT, lh=1.05, after=int(18 * s))]
     tmp = Canvas(W, H); hb = tmp.text_block(head, W // 2, 0, align="center", max_w=maxw, shadow=False)
     rows = []
     for lab, val in pairs:
@@ -495,7 +501,7 @@ def build_audio(aspect, out_wav):
         g = gain if np.isscalar(gain) else gain[: len(seg), None]
         mix[i0:i0 + len(seg)] += seg * g
 
-    xf = 3.0
+    xf = 1.2
     nxf = int(xf * sr)
     fade_in = np.sin(np.linspace(0, np.pi / 2, nxf)) ** 2   # equal-power pair with its reverse
     sB, sA = segs[segB["id"]], segs[segA["id"]]
@@ -506,14 +512,14 @@ def build_audio(aspect, out_wav):
     g_clean[-nxf:] *= fade_in[::-1]
     place(b_clean, 0.0, g_clean)
     place(b_bed, 0.0, g_bed)
-    # loop the bed until the end with equal-power crossfades
-    t = lb / sr - xf
+    # loop the bed until the end: each pass fades out and the next fades in (a short dip, no overlapping voices)
+    t = lb / sr
     while t < total:
         piece = b_bed.copy()
         piece[:nxf] *= fade_in[:, None]
         piece[-nxf:] *= fade_in[::-1][:, None]
         place(piece, t, BED)
-        t += lb / sr - xf
+        t += lb / sr
     # duck the bed under clip A
     tt = np.arange(n) / sr
     duck = np.ones(n, np.float32)
@@ -560,17 +566,18 @@ def build_final(lang, aspect, whatsapp=True, base=None, fast=False, suffix=""):
         for slot in seg["slots"]:
             key, appear, span = (slot + (1,))[:3]
             S0, E0 = slot_window(k, appear, span)
-            items.append((ovl[key], S0, E0))
+            items.append((key, ovl[key], S0, E0))
     inputs = ["-i", base]
     filt = []
     prev = "0:v"
     rise = int(26 * s)
-    for i, (o, S0, E0) in enumerate(items, start=1):
+    for i, (key, o, S0, E0) in enumerate(items, start=1):
         path, x, y = o
+        rise_i = 0 if key == "bismillah" else rise
         inputs += ["-loop", "1", "-framerate", str(FPS), "-i", path]
         fin, fout = 0.55, 0.45
         filt.append(f"[{i}:v]format=rgba,fade=t=in:st={S0:.3f}:d={fin}:alpha=1,fade=t=out:st={E0 - fout:.3f}:d={fout}:alpha=1[o{i}]")
-        yexpr = f"{y}+{rise}*(1-min(1\\,max(0\\,(t-{S0:.3f})/{fin})))"
+        yexpr = f"{y}+{rise_i}*(1-min(1\\,max(0\\,(t-{S0:.3f})/{fin})))"
         filt.append(f"[{prev}][o{i}]overlay=x={x}:y='{yexpr}':enable='between(t,{S0:.3f},{E0:.3f})':eof_action=pass[v{i}]")
         prev = f"v{i}"
     filt.append(f"[{prev}]format=yuv420p[vout]")

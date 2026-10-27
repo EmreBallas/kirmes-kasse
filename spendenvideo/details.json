@@ -1,16 +1,50 @@
 {
-  "tr": {"rows": [
-    ["Bağış hesabı", "Hicaz Eğitim Kültür\nve Dostluk Derneği"],
-    ["IBAN", "TR02 0001 0007 1784 3659 0450 01"],
-    ["Açıklama", "2004"],
-    ["Online bağış", "odeme.sunrisehelp.org/2004"],
-    ["İletişim · WhatsApp", "+90 534 234 84 67 · Cihat Göçer"]
-  ]},
-  "de": {"rows": [
-    ["Spendenkonto", "Hicaz Eğitim Kültür\nve Dostluk Derneği"],
-    ["IBAN", "TR02 0001 0007 1784 3659 0450 01"],
-    ["Verwendungszweck", "2004"],
-    ["Online spenden", "odeme.sunrisehelp.org/2004"],
-    ["Kontakt · WhatsApp", "+90 534 234 84 67 · Cihat Göçer"]
-  ]}
+ "tr": {
+  "rows": [
+   [
+    "Bağış hesabı",
+    "Hicaz Eğitim Kültür\nve Dostluk Derneği"
+   ],
+   [
+    "IBAN",
+    "TR02 0001 0007 1784 3659 0450 01"
+   ],
+   [
+    "Açıklama · proje kodu",
+    "2004"
+   ],
+   [
+    "Online bağış",
+    "odeme.sunrisehelp.org/2004"
+   ],
+   [
+    "İletişim · WhatsApp",
+    "+90 534 234 84 67 · Cihat Göçer"
+   ]
+  ]
+ },
+ "de": {
+  "rows": [
+   [
+    "Empfänger",
+    "Hicaz Eğitim Kültür\nve Dostluk Derneği"
+   ],
+   [
+    "IBAN",
+    "TR02 0001 0007 1784 3659 0450 01"
+   ],
+   [
+    "Verwendungszweck · Projektcode",
+    "2004"
+   ],
+   [
+    "Online spenden",
+    "odeme.sunrisehelp.org/2004"
+   ],
+   [
+    "Kontakt · WhatsApp",
+    "+90 534 234 84 67 · Cihat Göçer"
+   ]
+  ]
+ }
 }

@@ -1,6 +1,6 @@
 # Spendenvideo „Kur'an Öğretme Hizmeti“ – Çad / Abeşe (Entwurf 1)
 
-Hochformat 9:16 (1080×1920), 30 fps, ca. 89 Sekunden. Für WhatsApp, Instagram Reels/Story, TikTok.
+Hochformat 9:16 (1080×1920), 30 fps, ca. 93 Sekunden. Für WhatsApp, Instagram Reels/Story, TikTok.
 Hauptfassung: Türkisch. Deutsche Fassung liegt zusätzlich bei.
 
 ## Dateien
@@ -26,9 +26,7 @@ Hauptfassung: Türkisch. Deutsche Fassung liegt zusätzlich bei.
 
 ## Bitte bestätigen
 
-1. Online-Link: Cihat Hoca hat vier Links geschickt (…/2002 bis …/2005) und bittet, „2004“ als
-   Verwendungszweck anzugeben – deshalb zeigt das Video …/2004. Falls ein anderer Link gemeint ist,
-   `details.json` anpassen und neu rendern.
+1. Online-Link …/2004: vom Auftraggeber bestätigt.
 2. Die Nummer +90 534 234 84 67 ist als türkische Mobilnummer formatiert.
 3. Für Spender in Deutschland: Überweisung auf ein türkisches Konto ist keine SEPA-Zahlung
    (Gebühren, Dauer). Der Online-Link ist dafür wahrscheinlich der einfachere Weg; „Elden tahsilat“
@@ -41,24 +39,27 @@ Hauptfassung: Türkisch. Deutsche Fassung liegt zusätzlich bei.
 - Keine Musik: Tonspur ist ausschließlich die Rezitation der Kinder aus den beiden Clips.
   Clip 1 läuft nach dem Schnitt leiser als Klangteppich weiter, Clip 2 ist synchron im Bild.
 - Texte: drei Autorenvarianten, drei Gutachten (Wirkung, Richtigkeit/Religion, Sprache TR+DE), dann Synthese.
+- Prüfrunde am gerenderten Video (Layout, Sprache, Timing, Bild, Zielgruppe) eingearbeitet:
+  türkische Großbuchstaben (İ), Textpositionen außerhalb der App-Leisten, längere Lesezeiten,
+  Hadith-Lesbarkeit, Bildausschnitte, Tonbett ohne überlappende Stimmen.
   Hadith: Buhârî 5027 („Sizin en hayırlınız, Kur'an'ı öğrenen ve öğretendir.“).
 
 ## Ablauf (Sekunden ≈)
 
 | Zeit | Bild | Text (TR) |
 |---|---|---|
-| 0–9 | Clip: Junge rezitiert von der Holztafel (O-Ton) | Besmele + „Elindeki tahta levhadan Kur'an okuyor…“ |
-| 8–15 | Schwenk über den Hof mit der Klasse | „Çad'da Çocuklara Kur'an Eğitimi“ |
-| 14–21 | Zwei Jungen mit Tafeln | „Defter yerine tahta levha…“ |
-| 21–29 | Reihe der Jungen, kleiner Junge | „Her gün geliyorlar…“ |
-| 29–36 | Junge mit weißer Kappe | „Hocalarına maaş veren yok…“ |
-| 35–42 | Kleiner Junge auf der Matte | „Bu dersler yalnızca … bağışlarıyla ayakta kalıyor.“ |
-| 41–50 | Clip: kleiner Junge rezitiert (O-Ton) | „Bağışınızla bu çocuk öğrenmeye devam edebilir.“ |
-| 49–57 | Junge in Rot mit Tafel | Hadith arabisch + Übersetzung |
-| 57–65 | Lachende Jungen | „Sadaka-i cariye…“ |
-| 64–70 | Cihat Hoca mit Talebe | „Hocamız Cihat Göçer, Abeşe'de talebeleriyle.“ |
-| 70–83 | Spendenkarte | „Siz de bu hayra ortak olun“ + Konto/IBAN/Açıklama/Link/Kontakt |
-| 82–89 | Lächelnder Junge | „Allah razı olsun“ |
+| 0–9 | Clip: Junge rezitiert von der Holztafel (O-Ton) | Besmele + „Elindeki tahta levhadan Kur’an okuyor…“ |
+| 8–17 | Schwenk über den Hof mit der Klasse | „Çad’da Çocuklara Kur’an Eğitimi“ |
+| 16–23 | Zwei Jungen mit Tafeln | „Defter yerine tahta levha…“ |
+| 22–30 | Reihe der Jungen, kleiner Junge | „Her gün geliyorlar…“ |
+| 30–37 | Junge mit weißer Kappe und Tafel | „Hocalarına maaş veren yok…“ |
+| 36–43 | Kleiner Junge auf der Matte | „Bu dersler yalnızca … bağışlarıyla ayakta kalıyor.“ |
+| 42–51 | Clip: kleiner Junge rezitiert (O-Ton) | „Bağışınızla bu çocuklar öğrenmeye devam edebilir.“ |
+| 50–60 | Junge in Rot mit Tafel | Hadith arabisch + Übersetzung (Buhârî 5027) |
+| 59–67 | Lachende Jungen | „Sadaka-i cariye … sevabınız inşallah sürer.“ |
+| 66–73 | Cihat Hoca mit Talebe | „Hocamız Cihat Göçer, Abeşe’de bir talebesiyle.“ |
+| 72–85 | Spendenkarte | „Siz de bu hayra ortak olun“ + Konto/IBAN/Proje kodu/Link/Kontakt |
+| 84–93 | Lächelnder Junge | „Allah razı olsun“ |
 
 ## Neu rendern (nach Änderungen an Texten oder Daten)
 
