@@ -75,7 +75,10 @@ SEGMENTS = [
          slots=[("s09_sadaqa", 0.9, 2)]),
     dict(id="s09b", kind="photo", src="p05_two_boys_smiling_b.jpg", dur=4.0,
          start=dict(fx=0.40, fy=0.45, z=1.0), end=dict(fx=0.42, fy=0.44, z=1.08), slots=[]),
-    dict(id="s10", kind="card", src="p08_boy_blue_tablet.jpg", dur=11.0,
+    dict(id="s09c", kind="photo", src="p15_hoca_with_boy.jpg", dur=6.5, enhance=True,
+         start=dict(fx=0.60, fy=0.50, z=1.07), end=dict(fx=0.60, fy=0.50, z=1.0),
+         slots=[("s09c_hoca", 0.9)]),
+    dict(id="s10", kind="card", src="p08_boy_blue_tablet.jpg", dur=13.0,
          start=dict(fx=0.5, fy=0.5, z=1.0), end=dict(fx=0.5, fy=0.5, z=1.05),
          slots=[("cta", 0.7)]),
     dict(id="s11", kind="photo", src="p11_boy_brown_cap.jpg", dur=8.0,
@@ -359,7 +362,7 @@ def make_overlays(lang, aspect):
     c.text_block([dict(text="بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِيمِ", font=F_ARABIC, size=int(74 * s), color=C_GOLD, rtl=True, lh=1.6)], W // 2, int(118 * s), align="center", max_w=maxw)
     out["bismillah"] = c.save(os.path.join(OVL, f"{lang}_{aspect}_bismillah.png"))
 
-    for key in ("s01_hook", "s03_tablets", "s04_children", "s05_teachers", "s06_donations", "s07_clipA", "s09_sadaqa"):
+    for key in ("s01_hook", "s03_tablets", "s04_children", "s05_teachers", "s06_donations", "s07_clipA", "s09_sadaqa", "s09c_hoca"):
         medium_block(key, txt[key])
 
     # --- title block (s02): kicker + title + sub, centred
@@ -400,9 +403,9 @@ def make_overlays(lang, aspect):
     tmp = Canvas(W, H); hb = tmp.text_block(head, W // 2, 0, align="center", max_w=maxw, shadow=False)
     rows = []
     for lab, val in pairs:
-        rows.append(dict(text=lab.upper(), font=F_SANS_SB, size=int(26 * s), color=C_GOLD, tracking=int(4 * s), after=int(6 * s)))
-        rows.append(dict(text=val, font=F_SANS_SB if val.startswith("[") is False else F_SANS_M, size=int(44 * s),
-                         color=C_TEXT if not val.startswith("[") else C_MUTED, lh=1.1, after=int(30 * s)))
+        rows.append(dict(text=lab.upper(), font=F_SANS_SB, size=int(25 * s), color=C_GOLD, tracking=int(4 * s), after=int(5 * s)))
+        rows.append(dict(text=val, font=F_SANS_SB if val.startswith("[") is False else F_SANS_M, size=int(41 * s),
+                         color=C_TEXT if not val.startswith("[") else C_MUTED, lh=1.12, after=int(24 * s)))
     tmp = Canvas(W, H); rb = tmp.text_block(rows, marg + int(40 * s), 0, max_w=maxw - int(80 * s), shadow=False)
     line = [dict(text=txt["s10_line"], font=F_SERIF_I, size=int(42 * s), color=C_MUTED)]
     tmp = Canvas(W, H); lb = tmp.text_block(line, W // 2, 0, align="center", max_w=maxw, shadow=False)

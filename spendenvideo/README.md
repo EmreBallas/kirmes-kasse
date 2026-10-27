@@ -1,6 +1,6 @@
 # Spendenvideo „Kur'an Öğretme Hizmeti“ – Çad / Abeşe (Entwurf 1)
 
-Hochformat 9:16 (1080×1920), 30 fps, ca. 81 Sekunden. Für WhatsApp, Instagram Reels/Story, TikTok.
+Hochformat 9:16 (1080×1920), 30 fps, ca. 89 Sekunden. Für WhatsApp, Instagram Reels/Story, TikTok.
 Hauptfassung: Türkisch. Deutsche Fassung liegt zusätzlich bei.
 
 ## Dateien
@@ -18,15 +18,21 @@ Hauptfassung: Türkisch. Deutsche Fassung liegt zusätzlich bei.
 
 ## Schon eingebaut (Stand WhatsApp-Chat mit Cihat Hoca)
 
-- Ort: Çad, Abeşe (Titel, Untertitel, Spendenkarte)
-- Verantwortlicher: Cihat Göçer
-- Kontakt: +90 534 234 84 67 (als türkische Mobilnummer interpretiert – bitte bestätigen)
+- Ort: Çad, Abeşe (Titel, Untertitel)
+- Foto von Cihat Göçer Hoca mit Talebe als eigenes Bild vor der Spendenkarte
+- Spendenkarte: Hicaz Eğitim Kültür ve Dostluk Derneği, IBAN TR02 0001 0007 1784 3659 0450 01
+  (Prüfziffer geprüft), Açıklama/Verwendungszweck 2004, Online-Link odeme.sunrisehelp.org/2004,
+  Kontakt +90 534 234 84 67 (Cihat Göçer)
 
-## Noch offen
+## Bitte bestätigen
 
-1. **Zahlungsweg** (IBAN / PayPal / Western Union …) – aktuell Platzhalter „[Ödeme bilgileri eklenecek]“
-2. Name des Vereins / der Kuruluş, falls es einen gibt (sonst bleibt die Zeile weg)
-3. Foto von Cihat Hoca mit den Talebe (kommt nach dem Gebet) – kann als eigenes Bild vor der Spendenkarte eingebaut werden
+1. Online-Link: Cihat Hoca hat vier Links geschickt (…/2002 bis …/2005) und bittet, „2004“ als
+   Verwendungszweck anzugeben – deshalb zeigt das Video …/2004. Falls ein anderer Link gemeint ist,
+   `details.json` anpassen und neu rendern.
+2. Die Nummer +90 534 234 84 67 ist als türkische Mobilnummer formatiert.
+3. Für Spender in Deutschland: Überweisung auf ein türkisches Konto ist keine SEPA-Zahlung
+   (Gebühren, Dauer). Der Online-Link ist dafür wahrscheinlich der einfachere Weg; „Elden tahsilat“
+   (Bargeld in der Gemeinde) war laut Hoca ohnehin Priorität 1.
 4. Optional: Logo (PNG transparent), Nasheed/İlahi als Tonbett statt der Rezitation
 
 ## Bewusst so gelöst
@@ -50,8 +56,9 @@ Hauptfassung: Türkisch. Deutsche Fassung liegt zusätzlich bei.
 | 41–50 | Clip: kleiner Junge rezitiert (O-Ton) | „Bağışınızla bu çocuk öğrenmeye devam edebilir.“ |
 | 49–57 | Junge in Rot mit Tafel | Hadith arabisch + Übersetzung |
 | 57–65 | Lachende Jungen | „Sadaka-i cariye…“ |
-| 64–75 | Spendenkarte | „Siz de bu hayra ortak olun“ + Ort/Hoca/Kontakt/Bağış |
-| 74–81 | Lächelnder Junge | „Allah razı olsun“ |
+| 64–70 | Cihat Hoca mit Talebe | „Hocamız Cihat Göçer, Abeşe'de talebeleriyle.“ |
+| 70–83 | Spendenkarte | „Siz de bu hayra ortak olun“ + Konto/IBAN/Açıklama/Link/Kontakt |
+| 82–89 | Lächelnder Junge | „Allah razı olsun“ |
 
 ## Neu rendern (nach Änderungen an Texten oder Daten)
 

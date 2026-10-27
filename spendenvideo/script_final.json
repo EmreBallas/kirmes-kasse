@@ -79,6 +79,11 @@
    "id": "s11_sub",
    "de": "Möge Allah es dir vergelten.\nTeile dieses Video.",
    "tr": "Allah hayrınızı kabul etsin.\nPaylaşarak da destek olabilirsiniz."
+  },
+  {
+   "id": "s09c_hoca",
+   "de": "Unser Hodscha Cihat Göçer\nvor Ort in Abéché.",
+   "tr": "Hocamız Cihat Göçer,\nAbeşe'de talebeleriyle."
   }
  ],
  "source": "writer panel + judges + synthesis (workflow wf_390d66ce-2b0), location lines adapted after the user confirmed Chad/Abéché"
