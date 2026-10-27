@@ -40,7 +40,8 @@ Hauptfassung: Türkisch. Deutsche Fassung liegt zusätzlich bei.
   Clip 1 läuft voll, solange der Junge im Bild ist, danach einmal leiser weiter, bis er von selbst
   endet (keine Schleife, kein Schnitt mitten in der Rezitation). Clip 2 läuft synchron im Bild.
   Ab dem Hadith läuft Clip 1 ein zweites Mal komplett und ungeschnitten leise mit und endet von
-  selbst auf der Spendenkarte; Abspann nur mit leisem Raumton. Falls der Hoca gar keine Rezitation
+  selbst auf der Spendenkarte; dazwischen und im Abspann nur ein sehr leises, gleichmäßiges Grundrauschen
+  (kein Loop). Falls der Hoca gar keine Rezitation
   im Hintergrund möchte: in `tools/build.py` `second_pass=False` setzen und neu rendern.
 - Texte: drei Autorenvarianten, drei Gutachten (Wirkung, Richtigkeit/Religion, Sprache TR+DE), dann Synthese.
 - Prüfrunde am gerenderten Video (Layout, Sprache, Timing, Bild, Zielgruppe) eingearbeitet:
@@ -71,5 +72,6 @@ Hauptfassung: Türkisch. Deutsche Fassung liegt zusätzlich bei.
 python3 tools/build.py base            # nur nötig, wenn Bilder/Dauern geändert wurden
 python3 tools/build.py final --lang tr # Overlays + Ton + Export (Master + WhatsApp)
 python3 tools/build.py final --lang de
+python3 tools/build.py remux          # nur Tonspur neu bauen und in die fertigen Videos einsetzen (Sekunden statt Minuten)
 ```
 Quellmedien (Fotos/Clips) liegen nicht im Repo (Privatsphäre der Kinder), sondern im Projektordner `src/`.

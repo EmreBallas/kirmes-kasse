@@ -505,19 +505,17 @@ def build_audio(aspect, out_wav, second_pass=True):
         mix[i0:i0 + len(seg)] += seg * g
 
     sB, sA, s08 = segs[segB["id"]], segs[segA["id"]], segs["s08"]
-    # room tone: the voiceless head of clip B, looped with short crossfades, very quiet
-    head = b_clean[: int(1.3 * sr)].copy()
-    nh = len(head); nx = int(0.3 * sr)
-    ramp = np.linspace(0, 1, nx)[:, None]
-    head[:nx] *= ramp; head[-nx:] *= ramp[::-1]
-    tone = np.zeros((n + nh, 2), np.float32)
-    pos = 0
-    while pos < n:
-        tone[pos:pos + nh] += head
-        pos += nh - nx
-    tone = tone[:n]
-    tone *= 10 ** (-35 / 20) / (np.sqrt(np.mean(tone ** 2)) + 1e-9)
+    # room tone: soft, continuous, non-periodic "air" (band-limited noise), far below the voices
+    rng = np.random.default_rng(7)
+    noise = rng.standard_normal((n, 2)).astype(np.float32)
+    f = np.fft.rfftfreq(n, 1 / sr)
+    shape = 1.0 / np.sqrt(1.0 + (f / 900.0) ** 2) / np.sqrt(np.maximum(f, 40.0) / 40.0)   # lowpass + pink tilt
+    tone = np.fft.irfft(np.fft.rfft(noise, axis=0) * shape[:, None], n=n, axis=0).astype(np.float32)
+    tone *= 10 ** (-55 / 20) / (np.sqrt(np.mean(tone ** 2)) + 1e-9)
     mix += tone
+    # clip B must start and end without clicks (its last sample is not zero)
+    b_clean[: int(0.05 * sr)] *= np.linspace(0, 1, int(0.05 * sr))[:, None]
+    b_clean[-int(0.6 * sr):] *= np.linspace(1, 0, int(0.6 * sr))[:, None]
     # pass 1: full while on screen, then -8 dB, uncut to its natural end
     g1 = env_ramp(lb, sB["end"] - T_X, sB["end"] + 1.3, 1.0, SOFT)
     place(b_clean, 0.0, g1)
@@ -543,6 +541,22 @@ def measure_lufs(path):
     import re
     m = re.findall(r"I:\s+(-?[\d.]+) LUFS", r)
     return float(m[-1])
+
+def remux_audio(aspect):
+    """Replace the audio of every existing final with a freshly built audio_<aspect>.wav (video stream copied)."""
+    wav = os.path.join(OUT, f"audio_{aspect}.wav")
+    if os.path.exists(wav):
+        os.remove(wav)
+    build_audio(aspect, wav)
+    gain_db = -16.0 - measure_lufs(wav)
+    for path in sorted(glob.glob(os.path.join(OUT, f"spendenvideo_*_{aspect}*.mp4"))):
+        tmp = path + ".tmp.mp4"
+        br = "128k" if path.endswith("_whatsapp.mp4") else "160k"
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", path, "-i", wav, "-map", "0:v:0", "-map", "1:a:0",
+                        "-af", f"volume={gain_db:.2f}dB,alimiter=limit=0.891:attack=5:release=80:level=false",
+                        "-c:v", "copy", "-c:a", "aac", "-b:a", br, "-ar", "48000", "-shortest", "-movflags", "+faststart", tmp], check=True)
+        shutil.move(tmp, path)
+        print("remuxed:", path)
 
 # ----------------------------------------------------------------------------- final assembly
 def build_final(lang, aspect, whatsapp=True, base=None, fast=False, suffix=""):
@@ -596,7 +610,7 @@ def build_final(lang, aspect, whatsapp=True, base=None, fast=False, suffix=""):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["base", "final", "overlays", "audio", "timeline"])
+    ap.add_argument("cmd", choices=["base", "final", "overlays", "audio", "timeline", "remux"])
     ap.add_argument("--lang", default="de")
     ap.add_argument("--aspect", default="9x16")
     ap.add_argument("--no-whatsapp", action="store_true")
@@ -615,3 +629,5 @@ if __name__ == "__main__":
         print(build_audio(a.aspect, os.path.join(OUT, f"audio_{a.aspect}.wav")))
     elif a.cmd == "final":
         build_final(a.lang, a.aspect, whatsapp=not a.no_whatsapp, base=a.base, fast=a.fast, suffix=a.suffix)
+    elif a.cmd == "remux":
+        remux_audio(a.aspect)
